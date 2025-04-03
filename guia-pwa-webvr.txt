@@ -122,3 +122,6 @@ MEJORES PRÁCTICAS IMPLEMENTADAS
 4. ENFOQUE EN COMPATIBILIDAD
    - Detección de capacidades del dispositivo
    - Adaptación a limitaciones de WebXR en Pico 
+
+
+   git remote add origin git@github.com:Marcomano28/WebVr-Pico.git
