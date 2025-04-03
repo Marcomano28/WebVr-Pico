@@ -10,6 +10,7 @@ import ModelLoader, { GLTFModelHandle } from './models/model-loader'
 import FBXModel, { FBXModelHandle } from './models/fbx-model'
 import { Floor } from './floor'
 import AnimatedAvatar, { AnimatedAvatarHandle } from './models/animated-avatar'
+import SimpleAudio from './simple-audio'
 
 // Componente para verificar compatibilidad con WebXR
 const VRSupport = () => {
@@ -122,6 +123,9 @@ export function VRScene() {
           <Environment preset="sunset" />
           <Controllers />
           <Hands />
+          
+          {/* Añadir audio ambiental con volumen bajo */}
+          <SimpleAudio url="/audio/ambient.mp3" volume={0.15} />
           
           {/* Iluminación básica */}
           <ambientLight intensity={0.5} />
@@ -247,6 +251,9 @@ export function VRScene() {
           )}
           
         </XR>
+        
+        {/* OrbitControls para navegadores no-VR */}
+        <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} />
       </Canvas>
     </>
   )
