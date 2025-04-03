@@ -4,13 +4,13 @@ import React, { useRef, useState, useEffect, useCallback } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { VRButton, XR, Controllers, Hands, Interactive } from '@react-three/xr'
-import { Environment, OrbitControls } from '@react-three/drei'
+import { Environment, OrbitControls, Text } from '@react-three/drei'
 import MovementEnhanced from './controls/movement-enhanced'
 import ModelLoader, { GLTFModelHandle } from './models/model-loader'
 import FBXModel, { FBXModelHandle } from './models/fbx-model'
 import { Floor } from './floor'
 import AnimatedAvatar, { AnimatedAvatarHandle } from './models/animated-avatar'
-import SimpleAudio from './simple-audio'
+import SimpleAudio, { AudioControl } from './simple-audio'
 
 // Componente para verificar compatibilidad con WebXR
 const VRSupport = () => {
@@ -75,10 +75,16 @@ export function VRScene() {
   const avatarRef = useRef<AnimatedAvatarHandle>(null)
   const mclarenRef = useRef<GLTFModelHandle>(null)
   
+  // Referencia al componente de audio
+  const audioRef = useRef<AudioControl>(null)
+  
   // Estado para rastrear si el modelo está cargado
   const [modelLoaded, setModelLoaded] = useState(false)
   const [animationNames, setAnimationNames] = useState<string[]>([])
   const [avatarAnimations, setAvatarAnimations] = useState<string[]>([])
+  
+  // Estado para rastrear información de audio
+  const [currentTrack, setCurrentTrack] = useState({ id: 'track1', name: 'Ambiente' })
   
   // Función para manejar cuando el modelo se carga
   const handleModelLoaded = useCallback(() => {
@@ -112,6 +118,12 @@ export function VRScene() {
       console.log("Animaciones disponibles en el avatar:", names)
     }
   }, [])
+  
+  // Manejador de cambio de pista de audio
+  const handleTrackChange = useCallback((track: { id: string; name: string; path: string }) => {
+    setCurrentTrack({ id: track.id, name: track.name })
+    console.log(`Música cambiada a: ${track.name}`)
+  }, [])
 
   return (
     <>
@@ -125,7 +137,11 @@ export function VRScene() {
           <Hands />
           
           {/* Añadir audio ambiental con volumen bajo */}
-          <SimpleAudio url="/audio/Zen et fluide .mp3" volume={0.4} />
+          <SimpleAudio 
+            ref={audioRef} 
+            volume={0.4} 
+            onTrackChange={handleTrackChange} 
+          />
           
           {/* Iluminación básica */}
           <ambientLight intensity={0.5} />
@@ -213,21 +229,25 @@ export function VRScene() {
             </Interactive>
           )}
           
-          {/* Botón para cambiar animación del FBX */}
+          {/* Botón para cambiar música (esfera azul) */}
           <Interactive onSelect={() => {
-            if (fbxModelRef.current) {
-              const currentIndex = fbxModelRef.current.getCurrentAnimationIndex();
-              const animCount = fbxModelRef.current.getAnimationCount();
-              if (animCount > 0) {
-                const nextIndex = (currentIndex + 1) % animCount;
-                fbxModelRef.current.playAnimation(nextIndex);
-                console.log(`FBX: Cambiado a animación ${nextIndex} de ${animCount}`);
-              }
+            if (audioRef.current) {
+              audioRef.current.nextTrack();
             }
           }}>
             <mesh position={[0.2, 0.1, -1]}>
               <sphereGeometry args={[0.05]} />
               <meshStandardMaterial color="blue" emissive="blue" emissiveIntensity={0.5} />
+              <group position={[0, 0.1, 0]}>
+                <Text 
+                  fontSize={0.03} 
+                  color="white"
+                  anchorX="center"
+                  anchorY="middle"
+                >
+                  {`🎵 ${currentTrack.name}`}
+                </Text>
+              </group>
             </mesh>
           </Interactive>
           

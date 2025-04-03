@@ -1,23 +1,68 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
+// Lista de pistas disponibles
+const AUDIO_TRACKS = [
+  { id: 'track1', name: 'Ambiente', path: '/audio/Two Grooves.mp3' },
+  { id: 'track1', name: 'Ambiente', path: '/audio/Oceanvs Orientalis.mp3' },
+  { id: 'track1', name: 'Ambiente', path: '/audio/Zen et fluide .mp3' },
+  // Agregar más pistas según sea necesario:
+  // { id: 'track2', name: 'Otro tema', path: '/audio/otro-tema.mp3' },
+]
+
+// Tipo para el control de audio expuesto
+export type AudioControl = {
+  nextTrack: () => void;
+  getCurrentTrack: () => { id: string; name: string; path: string };
+  play: () => void;
+  stop: () => void;
+};
+
+// Props para el componente de audio
+export interface SimpleAudioProps {
+  initialTrackId?: string;
+  volume?: number;
+  autoPlay?: boolean;
+  loop?: boolean;
+  onTrackChange?: (track: { id: string; name: string; path: string }) => void;
+}
+
 /**
  * Componente de audio simple que reproduce automáticamente un archivo de audio
- * con volumen bajo al cargar la escena.
+ * y permite cambiar entre diferentes pistas.
  */
-export default function SimpleAudio({ 
-  url = '/audio/Zen et fluide.mp3',
-  volume = 0.8, 
+const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
+  initialTrackId = 'track1',
+  volume = 0.5, 
   autoPlay = true,
-  loop = true
-}) {
+  loop = true,
+  onTrackChange = null
+}, ref) => {
   // Tipar correctamente la referencia del audio
   const audioRef = useRef<THREE.Audio | null>(null)
   const { camera, gl } = useThree()
   const [isLoaded, setIsLoaded] = useState(false)
+  const [currentTrackId, setCurrentTrackId] = useState(initialTrackId)
+  
+  // Obtener la información de la pista actual
+  const getCurrentTrack = () => {
+    return AUDIO_TRACKS.find(track => track.id === currentTrackId) || AUDIO_TRACKS[0]
+  }
+  
+  // Cambiar a la siguiente pista
+  const nextTrack = () => {
+    const currentIndex = AUDIO_TRACKS.findIndex(track => track.id === currentTrackId)
+    const nextIndex = (currentIndex + 1) % AUDIO_TRACKS.length
+    setCurrentTrackId(AUDIO_TRACKS[nextIndex].id)
+    
+    // Notificar el cambio si hay un manejador
+    if (onTrackChange) {
+      onTrackChange(AUDIO_TRACKS[nextIndex])
+    }
+  }
   
   // Función para intentar reproducir el audio - puede ser llamada por una interacción del usuario
   const playAudio = () => {
@@ -25,7 +70,7 @@ export default function SimpleAudio({
       try {
         if (!audioRef.current.isPlaying) {
           audioRef.current.play()
-          console.log(`Audio reproduciendo: ${url}`)
+          console.log(`Audio reproduciendo: ${getCurrentTrack().path}`)
         }
       } catch (error) {
         console.warn('Error al reproducir audio:', error)
@@ -50,8 +95,17 @@ export default function SimpleAudio({
     }
   }, [gl, isLoaded])
   
+  // Efecto para cargar y reproducir la pista de audio actual
   useEffect(() => {
-    console.log("Inicializando componente de audio...")
+    console.log("Cargando pista de audio:", currentTrackId)
+    
+    // Detener reproducción anterior si existe
+    if (audioRef.current && audioRef.current.isPlaying) {
+      audioRef.current.stop()
+    }
+    
+    const track = getCurrentTrack()
+    const url = track.path
     
     // Crear un listener de audio y adjuntarlo a la cámara
     const listener = new THREE.AudioListener()
@@ -124,8 +178,22 @@ export default function SimpleAudio({
       }
       camera.remove(listener)
     }
-  }, [camera, url, volume, autoPlay, loop])
+  }, [camera, currentTrackId, volume, autoPlay, loop])
+  
+  // Exponer métodos para controlar desde componentes padres
+  useImperativeHandle(ref, () => ({
+    nextTrack,
+    getCurrentTrack,
+    play: playAudio,
+    stop: () => {
+      if (audioRef.current && audioRef.current.isPlaying) {
+        audioRef.current.stop()
+      }
+    }
+  }));
   
   // Este componente no renderiza nada visible
   return null
-} 
+});
+
+export default SimpleAudio; 
