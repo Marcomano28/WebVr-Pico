@@ -1,0 +1,124 @@
+=====================================
+GUÍA DE PWA PARA APLICACIÓN WEBVR EN PICO
+=====================================
+
+¿QUÉ ES UNA PWA?
+---------------
+Una Progressive Web App (PWA) es una aplicación web que utiliza tecnologías modernas para ofrecer una experiencia similar a la de una aplicación nativa. Funciona en cualquier navegador pero ofrece funcionalidades adicionales como instalación en el dispositivo y funcionamiento offline.
+
+COMPONENTES CLAVE DE NUESTRA PWA
+-------------------------------
+
+1. MANIFEST.JSON
+   - Ubicación: /public/manifest.json
+   - Función: Define cómo se comporta la aplicación cuando se instala
+   - Contiene:
+     * Nombre y descripción de la app
+     * Iconos en diferentes tamaños
+     * Colores de tema y fondo
+     * Modo de visualización (standalone) que oculta la interfaz del navegador
+     * URL de inicio
+
+2. SERVICE WORKER
+   - Ubicación: /public/sw.js
+   - Función: Actúa como proxy entre la aplicación y la red
+   - Capacidades:
+     * Almacena en caché recursos (HTML, CSS, JS, modelos 3D)
+     * Permite funcionamiento offline
+     * Gestiona actualizaciones de la aplicación
+   - Ciclo de vida:
+     * Instalación: Almacena recursos iniciales
+     * Activación: Limpia cachés antiguas
+     * Fetch: Intercepta peticiones de red
+
+3. CONFIGURACIÓN DEL LAYOUT
+   - Ubicación: /src/app/layout.tsx y /src/app/client-layout.tsx
+   - Función:
+     * Registra el service worker
+     * Añade metadatos necesarios para PWA
+     * Configura viewport para experiencia móvil
+
+4. IMPLEMENTACIÓN DE INSTALACIÓN
+   - Ubicación: /src/app/page.tsx
+   - Función:
+     * Detecta cuándo la app puede instalarse
+     * Muestra botón de instalación personalizado
+     * Gestiona respuesta del usuario
+
+5. OPTIMIZACIÓN PARA STATIC EXPORT
+   - Ubicación: /next.config.js
+   - Configuraciones:
+     * output: 'export' - Genera archivos estáticos
+     * trailingSlash: true - Mejora compatibilidad con hosting estático
+     * images.unoptimized: true - Compatible con export estático
+
+FUNCIONAMIENTO DE UNA PWA EN PICO
+--------------------------------
+1. PRIMER ACCESO
+   - Usuario accede vía navegador Pico a la URL
+   - Service worker se registra y cachea recursos
+   - Aparece prompt de instalación (manual o automático)
+
+2. INSTALACIÓN
+   - Al instalar, la PWA se añade a la biblioteca de apps
+   - Crea un acceso directo con el icono configurado
+   - Almacena recursos principales para acceso offline
+
+3. LANZAMIENTOS POSTERIORES
+   - Se abre directamente desde el menú del dispositivo
+   - Funciona en modo standalone (sin interfaz de navegador)
+   - Carga desde caché primero, luego actualiza si hay conexión
+
+4. ACTUALIZACIÓN
+   - Cuando hay cambios en la aplicación, el service worker detecta nuevas versiones
+   - Actualiza la caché en segundo plano
+   - Aplica cambios en la siguiente apertura o mediante notificación
+
+VENTAJAS DE PWA PARA WEBVR
+-------------------------
+1. DISTRIBUCIÓN SENCILLA
+   - No requiere publicación en tienda de aplicaciones
+   - Actualizaciones instantáneas sin aprobación de tienda
+   - Compartible mediante URL
+
+2. INSTALACIÓN LIGERA
+   - Ocupa menos espacio que una app nativa
+   - Descarga recursos bajo demanda
+   - No requiere actualizaciones manuales
+
+3. EXPERIENCIA INTEGRADA
+   - Acceso directo desde el menú de aplicaciones
+   - Apariencia de aplicación nativa
+   - Funcionamiento en segundo plano
+
+LIMITACIONES ACTUALES
+-------------------
+1. RENDIMIENTO
+   - Ligera sobrecarga del navegador comparado con app nativa
+   - Acceso limitado a algunas APIs de hardware específicas
+
+2. COMPATIBILIDAD
+   - Dependencia del navegador del dispositivo
+   - Algunas características WebXR pueden variar entre dispositivos
+
+3. PERSISTENCIA
+   - Almacenamiento limitado para modelos grandes
+   - Riesgo de borrado de caché por el navegador
+
+MEJORES PRÁCTICAS IMPLEMENTADAS
+-----------------------------
+1. RECURSOS OPTIMIZADOS
+   - Modelos 3D en formatos comprimidos (GLB)
+   - Cargas dinámicas de componentes
+
+2. INSTALABILIDAD MEJORADA
+   - Botón de instalación personalizado
+   - Iconos de alta calidad
+
+3. ESTRUCTURA DE DIRECTORIOS
+   - Organización para modelos (/public/models/)
+   - Separación clara de componentes
+
+4. ENFOQUE EN COMPATIBILIDAD
+   - Detección de capacidades del dispositivo
+   - Adaptación a limitaciones de WebXR en Pico 
