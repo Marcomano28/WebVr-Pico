@@ -239,7 +239,7 @@ export function VRScene() {
             }
           }}>
             <mesh position={[0.2, 0.1, -1]}>
-              <sphereGeometry args={[0.15]} />
+              <sphereGeometry args={[0.05]} />
               <meshStandardMaterial color="#0077ff" emissive="#0088ff" emissiveIntensity={1.0} />
             </mesh>
           </Interactive>
@@ -266,7 +266,7 @@ export function VRScene() {
         </XR>
         
         {/* OrbitControls para navegadores no-VR */}
-        <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} />
+        <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} enableDamping={true} dampingFactor={0.03}/>
       </Canvas>
     </>
   )
