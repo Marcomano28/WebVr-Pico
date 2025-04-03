@@ -6,9 +6,10 @@ import * as THREE from 'three'
 
 // Lista de pistas disponibles
 const AUDIO_TRACKS = [
-  { id: 'track1', name: 'Ambiente', path: '/audio/Two Grooves.mp3' },
-  { id: 'track1', name: 'Ambiente', path: '/audio/Oceanvs Orientalis.mp3' },
-  { id: 'track1', name: 'Ambiente', path: '/audio/Zen et fluide .mp3' },
+  { id: 'track1', name: 'Ambiente-Jazz', path: '/audio/Two Grooves.mp3' },
+  { id: 'track2', name: 'Ambiente', path: '/audio/Oceanvs Orientalis.mp3' },
+  { id: 'track3', name: 'Relax', path: '/audio/Zen et fluide .mp3' },
+  { id: 'track4', name: 'Nada', path: '' },
   // Agregar más pistas según sea necesario:
   // { id: 'track2', name: 'Otro tema', path: '/audio/otro-tema.mp3' },
 ]
