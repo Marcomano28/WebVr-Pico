@@ -125,7 +125,7 @@ export function VRScene() {
           <Hands />
           
           {/* Añadir audio ambiental con volumen bajo */}
-          <SimpleAudio url="/audio/ambient.mp3" volume={0.15} />
+          <SimpleAudio url="/audio/Zen et fluide .mp3" volume={0.4} />
           
           {/* Iluminación básica */}
           <ambientLight intensity={0.5} />

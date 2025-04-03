@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
@@ -10,15 +10,49 @@ import * as THREE from 'three'
  */
 export default function SimpleAudio({ 
   url = '/audio/Zen et fluide.mp3',
-  volume = 0.2, 
+  volume = 0.8, 
   autoPlay = true,
   loop = true
 }) {
   // Tipar correctamente la referencia del audio
   const audioRef = useRef<THREE.Audio | null>(null)
-  const { camera } = useThree()
+  const { camera, gl } = useThree()
+  const [isLoaded, setIsLoaded] = useState(false)
+  
+  // Función para intentar reproducir el audio - puede ser llamada por una interacción del usuario
+  const playAudio = () => {
+    if (audioRef.current && isLoaded) {
+      try {
+        if (!audioRef.current.isPlaying) {
+          audioRef.current.play()
+          console.log(`Audio reproduciendo: ${url}`)
+        }
+      } catch (error) {
+        console.warn('Error al reproducir audio:', error)
+      }
+    }
+  }
+  
+  // Escuchar eventos del canvas para intentar reproducir después de una interacción
+  useEffect(() => {
+    const domElement = gl.domElement
+    
+    const handleInteraction = () => {
+      playAudio()
+    }
+    
+    domElement.addEventListener('click', handleInteraction)
+    domElement.addEventListener('touchstart', handleInteraction)
+    
+    return () => {
+      domElement.removeEventListener('click', handleInteraction)
+      domElement.removeEventListener('touchstart', handleInteraction)
+    }
+  }, [gl, isLoaded])
   
   useEffect(() => {
+    console.log("Inicializando componente de audio...")
+    
     // Crear un listener de audio y adjuntarlo a la cámara
     const listener = new THREE.AudioListener()
     camera.add(listener)
@@ -30,25 +64,42 @@ export default function SimpleAudio({
     // Cargar el archivo de audio
     const audioLoader = new THREE.AudioLoader()
     
+    console.log(`Intentando cargar audio desde: ${url}`)
+    
     // Intentar cargar y reproducir el audio
     audioLoader.load(
       url, 
       (buffer) => {
+        console.log("Audio cargado correctamente:", url)
         sound.setBuffer(buffer)
         sound.setVolume(volume)
         sound.setLoop(loop)
+        setIsLoaded(true)
         
+        // Para un mejor manejo de políticas de reproducción:
+        // 1. Intento inmediato de reproducción
         if (autoPlay) {
-          // Reproducir con un pequeño retraso para evitar problemas en algunos navegadores
           setTimeout(() => {
             try {
               sound.play()
-              console.log(`Audio reproduciendo: ${url}`)
+              console.log(`Audio iniciado automáticamente: ${url}`)
             } catch (error) {
-              console.warn('No se pudo reproducir audio automáticamente:', error)
+              console.warn('Reproducción automática bloqueada, esperando interacción del usuario:', error)
             }
           }, 1000)
         }
+        
+        // 2. Intento adicional después de un tiempo
+        setTimeout(() => {
+          if (!sound.isPlaying) {
+            try {
+              sound.play()
+              console.log("Segundo intento de reproducción exitoso")
+            } catch (error) {
+              console.warn('Segundo intento de reproducción fallido:', error)
+            }
+          }
+        }, 3000)
       },
       // Callback de progreso
       (xhr) => {
@@ -58,13 +109,17 @@ export default function SimpleAudio({
       // Callback de error
       (error) => {
         console.error('Error al cargar audio:', error)
+        console.error('URL que falló:', url)
       }
     )
     
     // Limpieza al desmontar
     return () => {
+      console.log("Limpiando recursos de audio")
       if (audioRef.current) {
-        audioRef.current.stop()
+        if (audioRef.current.isPlaying) {
+          audioRef.current.stop()
+        }
         audioRef.current.disconnect()
       }
       camera.remove(listener)
