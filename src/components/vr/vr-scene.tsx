@@ -238,16 +238,6 @@ export function VRScene() {
             <mesh position={[0.2, 0.1, -1]}>
               <sphereGeometry args={[0.05]} />
               <meshStandardMaterial color="blue" emissive="blue" emissiveIntensity={0.5} />
-              <group position={[0, 0.1, 0]}>
-                <Text 
-                  fontSize={0.03} 
-                  color="white"
-                  anchorX="center"
-                  anchorY="middle"
-                >
-                  {`🎵 ${currentTrack.name}`}
-                </Text>
-              </group>
             </mesh>
           </Interactive>
           
