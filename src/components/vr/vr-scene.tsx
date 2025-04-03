@@ -144,7 +144,7 @@ export function VRScene() {
           />
           
           {/* Iluminación básica */}
-          <ambientLight intensity={0.5} />
+          <ambientLight intensity={0.2} />
           <directionalLight position={[5, 5, 5]} intensity={1} castShadow shadow-mapSize={[2048, 2048]} />
           
           {/* Suelo con texturas KTX2 */}
@@ -229,15 +229,18 @@ export function VRScene() {
             </Interactive>
           )}
           
-          {/* Botón para cambiar música (esfera azul) */}
+          {/* Botón para cambiar música (esfera azul) - MEJORADO */}
           <Interactive onSelect={() => {
             if (audioRef.current) {
               audioRef.current.nextTrack();
+              console.log("INTERACCIÓN DETECTADA: Cambiando pista de audio");
+            } else {
+              console.log("ERROR: audioRef es null");
             }
           }}>
             <mesh position={[0.2, 0.1, -1]}>
-              <sphereGeometry args={[0.05]} />
-              <meshStandardMaterial color="blue" emissive="blue" emissiveIntensity={0.5} />
+              <sphereGeometry args={[0.15]} />
+              <meshStandardMaterial color="#0077ff" emissive="#0088ff" emissiveIntensity={1.0} />
             </mesh>
           </Interactive>
           

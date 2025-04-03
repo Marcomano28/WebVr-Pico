@@ -43,7 +43,7 @@ export default function MovementEnhanced({
         lateralDirection.applyQuaternion(player.quaternion)
        
         // Aplicar velocidad y mover
-        lateralDirection.multiplyScalar(speed * 0.01)
+        lateralDirection.multiplyScalar(speed * 0.02)
         player.position.add(lateralDirection)
       }
     }
@@ -63,7 +63,7 @@ export default function MovementEnhanced({
       // Rotación horizontal
       if (horizontalValue !== 0) {
         // Suavizar la rotación interpolando el valor actual y el destino
-        stickValue.current = stickValue.current * 0.8 + horizontalValue * 0.2
+        stickValue.current = stickValue.current * 0.8 + horizontalValue * 0.3
         
         // Crear una rotación en Y basada en el valor del stick suavizado
         const rotationAngle = stickValue.current * rotationSpeed
@@ -85,7 +85,7 @@ export default function MovementEnhanced({
         moveDirection.applyQuaternion(player.quaternion)
         
         // Aplicar velocidad y mover
-        moveDirection.multiplyScalar(speed * 0.01)
+        moveDirection.multiplyScalar(speed * 0.02)
         player.position.add(moveDirection)
       }
     }

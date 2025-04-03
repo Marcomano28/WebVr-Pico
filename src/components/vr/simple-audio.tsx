@@ -36,7 +36,7 @@ export interface SimpleAudioProps {
  */
 const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
   initialTrackId = 'track1',
-  volume = 0.5, 
+  volume = 0.4, 
   autoPlay = true,
   loop = true,
   onTrackChange = null
@@ -54,14 +54,20 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
   
   // Cambiar a la siguiente pista
   const nextTrack = () => {
+    console.log("⭐ nextTrack llamado - Cambiando a siguiente pista");
     const currentIndex = AUDIO_TRACKS.findIndex(track => track.id === currentTrackId)
     const nextIndex = (currentIndex + 1) % AUDIO_TRACKS.length
+    console.log(`⭐ Cambiando de pista ${currentIndex} a ${nextIndex} (${AUDIO_TRACKS[nextIndex].name})`);
     setCurrentTrackId(AUDIO_TRACKS[nextIndex].id)
     
     // Notificar el cambio si hay un manejador
     if (onTrackChange) {
       onTrackChange(AUDIO_TRACKS[nextIndex])
+    } else {
+      console.log("⚠️ No hay manejador onTrackChange definido");
     }
+    
+    return AUDIO_TRACKS[nextIndex]; // Retornar la nueva pista para facilitar depuración
   }
   
   // Función para intentar reproducir el audio - puede ser llamada por una interacción del usuario
@@ -130,7 +136,6 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
         sound.setLoop(loop)
         setIsLoaded(true)
         
-        // Para un mejor manejo de políticas de reproducción:
         // 1. Intento inmediato de reproducción
         if (autoPlay) {
           setTimeout(() => {
