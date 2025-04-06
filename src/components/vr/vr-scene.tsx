@@ -144,9 +144,9 @@ export function VRScene() {
             ref={modelRef}
             url="/models/SAvatar1.glb" 
             position={[0, 0, -5]} 
-            scale={0.9}
+            scale={0.98}
             removePlane={true}
-            initialAnimationIndex={5}
+            initialAnimationIndex={6}
             onLoad={handleModelLoaded}
           />
           
