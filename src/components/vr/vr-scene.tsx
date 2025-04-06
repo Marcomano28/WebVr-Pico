@@ -142,7 +142,7 @@ export function VRScene() {
           {/* Modelo GLB con capacidad de animación - con removePlane para eliminar el plano blanco */}
           <ModelLoader 
             ref={modelRef}
-            url="/models/SamiAvatar1.glb" 
+            url="/models/SamiAvatar.glb" 
             position={[0, 0, -5]} 
             scale={1}
             removePlane={true}
@@ -199,7 +199,7 @@ export function VRScene() {
               }
             }}>
               <mesh position={[0, 0.1, -1]}>
-                <sphereGeometry args={[0.05]} />
+                <sphereGeometry args={[0.15]} />
                 <meshStandardMaterial color="green" emissive="green" emissiveIntensity={0.5} />
               </mesh>
             </Interactive>
