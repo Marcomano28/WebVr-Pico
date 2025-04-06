@@ -146,6 +146,7 @@ export function VRScene() {
             position={[0, 0, -5]} 
             scale={1}
             removePlane={true}
+            initialAnimationIndex={2}
             onLoad={handleModelLoaded}
           />
           
@@ -199,7 +200,7 @@ export function VRScene() {
               }
             }}>
               <mesh position={[0, 0.1, -1]}>
-                <sphereGeometry args={[0.15]} />
+                <sphereGeometry args={[0.05]} />
                 <meshStandardMaterial color="green" emissive="green" emissiveIntensity={0.5} />
               </mesh>
             </Interactive>

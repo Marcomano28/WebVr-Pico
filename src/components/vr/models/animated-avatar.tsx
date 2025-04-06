@@ -54,6 +54,7 @@ interface AnimatedAvatarProps {
   rotation?: [number, number, number]
   scale?: number | [number, number, number]
   headFollow?: boolean
+  initialAnimationIndex?: number
   onLoad?: () => void
 }
 
@@ -71,6 +72,7 @@ const AnimatedAvatar = forwardRef<AnimatedAvatarHandle, AnimatedAvatarProps>(({
   rotation = [0, 0, 0],
   scale = 1,
   headFollow = false,
+  initialAnimationIndex = 0,
   onLoad
 }, ref) => {
   const group = useRef<THREE.Group>(null)
@@ -108,11 +110,15 @@ const AnimatedAvatar = forwardRef<AnimatedAvatarHandle, AnimatedAvatarProps>(({
     if (names.length > 0) {
       console.log('Animaciones disponibles:', names)
       
-      // Reproducir la primera animación
-      if (actions && actions[names[0]]) {
-        actions[names[0]].reset().play()
-        setCurrentAnimation(names[0])
-        console.log(`Reproduciendo animación: ${names[0]}`)
+      // Usar el índice de animación inicial especificado (o la primera si está fuera de rango)
+      const animIndex = Math.min(Math.max(0, initialAnimationIndex), names.length - 1);
+      const animName = names[animIndex];
+      
+      // Reproducir la animación inicial
+      if (actions && actions[animName]) {
+        actions[animName].reset().play()
+        setCurrentAnimation(animName)
+        console.log(`Reproduciendo animación inicial: ${animName}`)
       }
     }
     
@@ -120,7 +126,7 @@ const AnimatedAvatar = forwardRef<AnimatedAvatarHandle, AnimatedAvatarProps>(({
     if (onLoad) {
       onLoad()
     }
-  }, [modelUrl, animationUrl, actions, names, onLoad])
+  }, [modelUrl, animationUrl, actions, names, onLoad, initialAnimationIndex])
   
   // Implementar seguimiento de cabeza si está habilitado
   useFrame((state) => {

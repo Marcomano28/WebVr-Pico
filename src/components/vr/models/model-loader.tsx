@@ -11,6 +11,7 @@ interface ModelLoaderProps {
   rotation?: [number, number, number]
   scale?: number | [number, number, number]
   removePlane?: boolean
+  initialAnimationIndex?: number
   onLoad?: () => void
 }
 
@@ -26,6 +27,7 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
   rotation = [0, 0, 0],
   scale = 1,
   removePlane = true,
+  initialAnimationIndex = 0,
   onLoad
 }, ref) => {
   const group = useRef<THREE.Group>(null)
@@ -49,8 +51,12 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
     if (names.length > 0) {
       console.log(`Modelo ${url} cargado con ${names.length} animaciones:`, names)
       
-      if (names.length > 0 && actions[names[0]]) {
-        playAnimation(names[0])
+      const animIndex = Math.min(Math.max(0, initialAnimationIndex), names.length - 1);
+      const animName = names[animIndex];
+      
+      if (actions[animName]) {
+        playAnimation(animName)
+        console.log(`Reproduciendo animación inicial: ${animName}`)
       }
     } else {
       console.log(`Modelo ${url} cargado sin animaciones`)
@@ -66,7 +72,7 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
     if (onLoad) {
       onLoad()
     }
-  }, [scene, actions, names, url, removePlane, onLoad])
+  }, [scene, actions, names, url, removePlane, initialAnimationIndex, onLoad])
   
   const playAnimation = (name: string): boolean => {
     if (!actions || !actions[name]) return false
