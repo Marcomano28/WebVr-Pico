@@ -69,7 +69,6 @@ const VRSupport = () => {
 
 export function VRScene() {
   // Referencias a los modelos
-  const fbxModelRef = useRef<FBXModelHandle>(null)
   const modelRef = useRef<GLTFModelHandle>(null)
   const carModelRef = useRef<GLTFModelHandle>(null)
   const avatarRef = useRef<AnimatedAvatarHandle>(null)
@@ -90,16 +89,6 @@ export function VRScene() {
   const handleModelLoaded = useCallback(() => {
     console.log("Modelo cargado correctamente")
     setModelLoaded(true)
-    
-    // Intentar activar la animación
-    if (fbxModelRef.current) {
-      const animCount = fbxModelRef.current.getAnimationCount()
-      console.log(`Modelo FBX tiene ${animCount} animaciones`)
-      if (animCount > 0) {
-        fbxModelRef.current.playAnimation(0)
-        console.log("Animación inicial FBX activada")
-      }
-    }
     
     // Comprobar animaciones del modelo GLB
     if (modelRef.current) {
@@ -158,19 +147,6 @@ export function VRScene() {
             scale={1}
             removePlane={true}
             onLoad={handleModelLoaded}
-          />
-          
-          {/* Modelo FBX con animación de movimiento */}
-          <FBXModel 
-            ref={fbxModelRef}
-            url="/models/fbx/Typing.fbx"  
-            position={[3, 0, -5]} 
-            scale={0.02} 
-            rotation={[0, -Math.PI/2, 0]} 
-            animationIndex={0}
-            animationSpeed={1}
-            autoPlay={true}
-            onLoaded={handleModelLoaded}
           />
           
           {/* Modelo del Lamborghini */}

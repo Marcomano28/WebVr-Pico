@@ -1,5 +1,5 @@
 // Service Worker básico para PWA
-const CACHE_NAME = 'webvr-cache-v1';
+const CACHE_NAME = 'webvr-cache-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,7 +7,6 @@ const urlsToCache = [
   '/models/AlfredAvatar.glb',
   '/models/fbx/Standing W_Briefcase Idle (1).fbx',
   '/models/fbx/Standing Idle.fbx',
-  '/models/fbx/Typing.fbx',
   '/models/lamborghini_huracan.glb',
   '/models/SamiAvatar.glb',
   '/models/mclaren_senna.glb'
