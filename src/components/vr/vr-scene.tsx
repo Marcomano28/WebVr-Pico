@@ -142,7 +142,7 @@ export function VRScene() {
           {/* Modelo GLB con capacidad de animación - con removePlane para eliminar el plano blanco */}
           <ModelLoader 
             ref={modelRef}
-            url={`/models/SamiAvatar.glb?v=${Date.now()}`} 
+            url="/models/SamiAvatar.glb" 
             position={[0, 0, -5]} 
             scale={1}
             removePlane={true}
@@ -153,7 +153,7 @@ export function VRScene() {
           {/* Modelo del Lamborghini */}
           <ModelLoader 
             ref={carModelRef}
-            url={`/models/lamborghini_huracan.glb?v=${Date.now()}`} 
+            url="/models/lamborghini_huracan.glb" 
             position={[-3, 0, -5]} 
             scale={1} 
             rotation={[0, Math.PI/4, 0]}
@@ -163,7 +163,7 @@ export function VRScene() {
           {/* Modelo del McLaren Senna */}
           <ModelLoader 
             ref={mclarenRef}
-            url={`/models/mclaren_senna.glb?v=${Date.now()}`} 
+            url="/models/mclaren_senna.glb" 
             position={[2, 0, -5]} 
             scale={1} 
             rotation={[0, Math.PI/6, 0]}
@@ -173,8 +173,8 @@ export function VRScene() {
           {/* Avatar animado con animación externa FBX - ahora con el mismo tamaño que el modelo estático (scale=1) */}
           <AnimatedAvatar 
             ref={avatarRef}
-            modelUrl={`/models/AlfredAvatar.glb?v=${Date.now()}`}
-            animationUrl={`/models/fbx/Standing W_Briefcase Idle (1).fbx?v=${Date.now()}`}
+            modelUrl="/models/AlfredAvatar.glb"
+            animationUrl="/models/fbx/Standing W_Briefcase Idle (1).fbx"
             position={[5, 0, -5]} 
             scale={1}
             headFollow={true}

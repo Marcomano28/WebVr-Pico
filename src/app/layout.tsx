@@ -41,9 +41,6 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="WebVR" />
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-        <meta http-equiv="Pragma" content="no-cache" />
-        <meta http-equiv="Expires" content="0" />
       </head>
       <body className={inter.className}>
         <ClientLayout>{children}</ClientLayout>
