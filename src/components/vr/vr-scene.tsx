@@ -142,7 +142,7 @@ export function VRScene() {
           {/* Modelo GLB con capacidad de animación - con removePlane para eliminar el plano blanco */}
           <ModelLoader 
             ref={modelRef}
-            url="/models/SamiAvatar.glb" 
+            url="/models/SAvatar1.glb" 
             position={[0, 0, -5]} 
             scale={1}
             removePlane={true}
