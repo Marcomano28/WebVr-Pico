@@ -146,7 +146,7 @@ export function VRScene() {
             position={[0, 0, -5]} 
             scale={0.98}
             removePlane={true}
-            initialAnimationIndex={6}
+            initialAnimationIndex={1}
             onLoad={handleModelLoaded}
           />
           
