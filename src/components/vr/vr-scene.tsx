@@ -109,7 +109,7 @@ const AGENT_MODEL_POINTS: Record<'sami' | 'alfred', {
 }
 const ROTA_VIEW = {
   yaw: -110,
-  pitch: -12
+  pitch: -35
 }
 const PACO_CHARACTER = {
   yawOffset: 0,
