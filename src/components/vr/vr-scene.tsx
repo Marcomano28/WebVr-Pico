@@ -418,20 +418,33 @@ function PacoCharacterPlane({ texture }: { texture: THREE.Texture }) {
   }, [])
 
   return (
-    <mesh
-      geometry={geometry}
-      position={PACO_CHARACTER_POSITION}
-      rotation={[0, PACO_CHARACTER_ROTATION_Y, 0]}
-      renderOrder={10}
-    >
-      <meshBasicMaterial
-        map={texture}
-        transparent={true}
-        alphaTest={0.02}
-        side={THREE.DoubleSide}
-        depthWrite={false}
-      />
-    </mesh>
+    <>
+      {/* Plano de sombra para dar sensación de estar pisando el suelo */}
+      <mesh
+        position={[PACO_CHARACTER_POSITION[0], PACO_CHARACTER_POSITION[1] - PACO_CHARACTER.feetOffset + 0.01, PACO_CHARACTER_POSITION[2]]}
+        rotation={[-Math.PI / 2, PACO_CHARACTER_ROTATION_Y, 0]}
+        receiveShadow
+      >
+        <circleGeometry args={[0.8, 16]} />
+        <meshBasicMaterial color="black" transparent opacity={0.3} />
+      </mesh>
+      {/* Personaje Paco */}
+      <mesh
+        geometry={geometry}
+        position={PACO_CHARACTER_POSITION}
+        rotation={[0, PACO_CHARACTER_ROTATION_Y, 0]}
+        renderOrder={10}
+        castShadow
+      >
+        <meshBasicMaterial
+          map={texture}
+          transparent={true}
+          alphaTest={0.02}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+    </>
   )
 }
 
@@ -453,6 +466,18 @@ function RotaPanoramaScene() {
   return (
     <>
       <RotaPanoramaCameraView />
+      {/* Luz direccional para sombras en el panorama */}
+      <directionalLight
+        position={[5, 5, 5]}
+        intensity={1}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-far={50}
+        shadow-camera-left={-10}
+        shadow-camera-right={10}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
+      />
       <mesh>
         <sphereGeometry args={[10, 30, 30]} />
         <meshBasicMaterial map={panoramaTexture} side={THREE.BackSide} />
