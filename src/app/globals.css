@@ -134,10 +134,10 @@ canvas {
 .speech-bubble__text {
   max-width: 100%;
   margin: 0;
-  padding: 14px 28px;
+  padding: 16px 32px;
   color: var(--speech-text);
   font-family: ui-rounded, "Avenir Next", "Trebuchet MS", system-ui, sans-serif;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 650;
   line-height: 1.35;
   letter-spacing: 0;
@@ -183,8 +183,8 @@ canvas {
 
 @media (max-width: 560px) {
   .speech-bubble__text {
-    padding: 12px 24px;
-    font-size: 15px;
+    padding: 14px 26px;
+    font-size: 13px;
     line-height: 1.32;
   }
 }
