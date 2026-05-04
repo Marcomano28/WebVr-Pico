@@ -4,7 +4,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
 import { VRButton, XR, Controllers, Hands, Interactive } from '@react-three/xr'
-import { Environment, OrbitControls, Text } from '@react-three/drei'
+import { Environment, OrbitControls } from '@react-three/drei'
 import MovementEnhanced from './controls/movement-enhanced'
 import ModelLoader, { GLTFModelHandle } from './models/model-loader'
 import { Floor } from './floor'
@@ -353,6 +353,64 @@ function getBubble3DText(text: string, typing?: boolean) {
   return `${trimmed.slice(0, 217).trim()}...`
 }
 
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let currentLine = ''
+
+  words.forEach((word) => {
+    const testLine = currentLine ? `${currentLine} ${word}` : word
+
+    if (context.measureText(testLine).width <= maxWidth || !currentLine) {
+      currentLine = testLine
+      return
+    }
+
+    lines.push(currentLine)
+    currentLine = word
+  })
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines.slice(0, 7)
+}
+
+function createBubbleTextTexture(text: string) {
+  const canvas = document.createElement('canvas')
+  const width = 1024
+  const height = 512
+  const context = canvas.getContext('2d')
+
+  canvas.width = width
+  canvas.height = height
+
+  if (!context) return null
+
+  context.clearRect(0, 0, width, height)
+  context.fillStyle = '#1f2328'
+  context.font = '500 52px Arial, sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+
+  const lines = wrapCanvasText(context, text, width * 0.82)
+  const lineHeight = 64
+  const firstY = height / 2 - ((lines.length - 1) * lineHeight) / 2
+
+  lines.forEach((line, index) => {
+    context.fillText(line, width / 2, firstY + index * lineHeight)
+  })
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.minFilter = THREE.LinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.needsUpdate = true
+
+  return texture
+}
+
 function SpeechBubbleAnchor({
   visible,
   bubbleSize,
@@ -458,8 +516,15 @@ function SpeechBubble3D({
   const anchorVector = useMemo(() => new THREE.Vector3().fromArray(anchorPosition), [anchorPosition])
   const tailVector = useMemo(() => new THREE.Vector3().fromArray(tailPosition), [tailPosition])
   const worldTailOffset = useMemo(() => tailVector.sub(anchorVector), [anchorVector, tailVector])
+  const textTexture = useMemo(() => createBubbleTextTexture(bubbleText), [bubbleText])
   const width = 1.85
   const height = 0.72
+
+  useEffect(() => {
+    return () => {
+      textTexture?.dispose()
+    }
+  }, [textTexture])
 
   useFrame(() => {
     if (!groupRef.current) return
@@ -479,19 +544,12 @@ function SpeechBubble3D({
         <coneGeometry args={[0.13, 0.34, 3]} />
         <meshBasicMaterial color="#fff8df" transparent opacity={0.94} depthWrite={false} />
       </mesh>
-      <Text
-        position={[0, 0.01, 0.006]}
-        fontSize={0.085}
-        maxWidth={width * 0.82}
-        lineHeight={1.12}
-        color="#1f2328"
-        anchorX="center"
-        anchorY="middle"
-        textAlign="center"
-        depthOffset={-10}
-      >
-        {bubbleText}
-      </Text>
+      {textTexture && (
+        <mesh position={[0, 0.01, 0.006]}>
+          <planeGeometry args={[width * 0.92, height * 0.78]} />
+          <meshBasicMaterial map={textTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
       <line>
         <bufferGeometry>
           <bufferAttribute
