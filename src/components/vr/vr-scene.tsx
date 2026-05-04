@@ -17,6 +17,8 @@ import SpeechBubbleOverlay, {
 import {
   SPEECH_BUBBLE_MIN_HEIGHT,
   SPEECH_BUBBLE_MIN_WIDTH,
+  SPEECH_BUBBLE_TEXT_PAD_X,
+  SPEECH_BUBBLE_TEXT_PAD_Y,
   clamp,
   getSpeechBubbleExit
 } from './dialogue/speech-bubble'
@@ -298,6 +300,12 @@ interface SpeechBubble3DProps {
   variant?: 'dialogue' | 'status'
 }
 
+interface SpeechBubble3DTexture {
+  texture: THREE.CanvasTexture
+  worldWidth: number
+  worldHeight: number
+}
+
 const VOICE_RECORDING_MIME_TYPES = [
   'audio/webm;codecs=opus',
   'audio/webm',
@@ -307,6 +315,16 @@ const VOICE_RECORDING_MIME_TYPES = [
 ]
 const VOICE_RECORDING_MIN_DURATION_MS = 900
 const VOICE_RECORDING_MAX_DURATION_MS = 8000
+const SPEECH_BUBBLE_3D_CANVAS_SCALE = 2
+const SPEECH_BUBBLE_3D_WORLD_PER_PIXEL = 0.00345
+const SPEECH_BUBBLE_3D_DIALOGUE_WIDTH = {
+  min: 320,
+  max: 760
+}
+const SPEECH_BUBBLE_3D_STATUS_WIDTH = {
+  min: 260,
+  max: 560
+}
 
 type VoiceInputStatus = 'idle' | 'recording' | 'transcribing'
 
@@ -375,84 +393,155 @@ function getBubble3DText(text: string, typing?: boolean) {
   const trimmed = text.trim()
 
   if (!trimmed) return ''
-  if (trimmed.length <= 220) return trimmed
+  if (trimmed.length <= 340) return trimmed
 
-  return `${trimmed.slice(0, 217).trim()}...`
+  return `${trimmed.slice(0, 337).trim()}...`
 }
 
-function roundRectPath(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
-  const r = Math.min(radius, width / 2, height / 2)
+function ovalCanvasPath(context: CanvasRenderingContext2D, width: number, height: number) {
+  const cx = width / 2
+  const cy = height / 2
+  const rx = width / 2
+  const ry = height / 2
+  const kx = rx * 0.56
+  const ky = ry * 0.56
 
   context.beginPath()
-  context.moveTo(x + r, y)
-  context.lineTo(x + width - r, y)
-  context.quadraticCurveTo(x + width, y, x + width, y + r)
-  context.lineTo(x + width, y + height - r)
-  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height)
-  context.lineTo(x + r, y + height)
-  context.quadraticCurveTo(x, y + height, x, y + height - r)
-  context.lineTo(x, y + r)
-  context.quadraticCurveTo(x, y, x + r, y)
+  context.moveTo(cx, cy - ry)
+  context.bezierCurveTo(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy)
+  context.bezierCurveTo(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry)
+  context.bezierCurveTo(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy)
+  context.bezierCurveTo(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry)
   context.closePath()
 }
 
-function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+function drawBubbleHighlight(context: CanvasRenderingContext2D, width: number, height: number) {
+  context.beginPath()
+  context.moveTo(width * 0.28, height * 0.23)
+  context.bezierCurveTo(width * 0.41, height * 0.14, width * 0.63, height * 0.17, width * 0.68, height * 0.29)
+}
+
+function ellipsizeCanvasLine(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (context.measureText(text).width <= maxWidth) return text
+
+  let nextText = text.trim()
+
+  while (nextText.length > 1 && context.measureText(`${nextText}...`).width > maxWidth) {
+    nextText = nextText.slice(0, -1).trimEnd()
+  }
+
+  return `${nextText || text.slice(0, 1)}...`
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number) {
   const words = text.split(/\s+/).filter(Boolean)
   const lines: string[] = []
   let currentLine = ''
 
-  words.forEach((word) => {
+  for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word
 
     if (context.measureText(testLine).width <= maxWidth || !currentLine) {
       currentLine = testLine
-      return
+      continue
     }
 
     lines.push(currentLine)
+
+    if (lines.length >= maxLines) {
+      return [
+        ...lines.slice(0, maxLines - 1),
+        ellipsizeCanvasLine(context, `${lines[maxLines - 1]} ${word}`, maxWidth)
+      ]
+    }
+
     currentLine = word
-  })
+  }
 
   if (currentLine) {
     lines.push(currentLine)
   }
 
-  return lines.slice(0, 7)
+  if (lines.length <= maxLines) return lines
+
+  return [
+    ...lines.slice(0, maxLines - 1),
+    ellipsizeCanvasLine(context, lines.slice(maxLines - 1).join(' '), maxWidth)
+  ]
 }
 
-function createBubbleTextTexture(text: string) {
+function createBubbleTextTexture(text: string, variant: SpeechBubble3DProps['variant'] = 'dialogue'): SpeechBubble3DTexture | null {
   const canvas = document.createElement('canvas')
-  const width = 1024
-  const height = 512
   const context = canvas.getContext('2d')
-
-  canvas.width = width
-  canvas.height = height
+  const isStatus = variant === 'status'
+  const widthLimits = isStatus ? SPEECH_BUBBLE_3D_STATUS_WIDTH : SPEECH_BUBBLE_3D_DIALOGUE_WIDTH
+  const fontSize = isStatus ? 42 : 48
+  const lineHeight = isStatus ? 54 : 62
+  const maxLines = isStatus ? 4 : 7
 
   if (!context) return null
 
+  context.font = `600 ${fontSize}px Arial, sans-serif`
+
+  const maxTextWidth = widthLimits.max - SPEECH_BUBBLE_TEXT_PAD_X
+  let lines = wrapCanvasText(context, text, maxTextWidth, maxLines)
+  const measuredTextWidth = lines.reduce(
+    (widest, line) => Math.max(widest, context.measureText(line).width),
+    0
+  )
+  const bubbleWidth = clamp(
+    Math.ceil(measuredTextWidth + SPEECH_BUBBLE_TEXT_PAD_X),
+    Math.max(SPEECH_BUBBLE_MIN_WIDTH, widthLimits.min),
+    widthLimits.max
+  )
+  const textWidth = Math.max(bubbleWidth - SPEECH_BUBBLE_TEXT_PAD_X, 1)
+
+  lines = wrapCanvasText(context, text, textWidth, maxLines)
+
+  const bubbleHeight = Math.max(
+    Math.ceil(lines.length * lineHeight + SPEECH_BUBBLE_TEXT_PAD_Y),
+    SPEECH_BUBBLE_MIN_HEIGHT
+  )
+  const width = bubbleWidth
+  const height = bubbleHeight
+
+  canvas.width = Math.ceil(width * SPEECH_BUBBLE_3D_CANVAS_SCALE)
+  canvas.height = Math.ceil(height * SPEECH_BUBBLE_3D_CANVAS_SCALE)
+
+  context.scale(SPEECH_BUBBLE_3D_CANVAS_SCALE, SPEECH_BUBBLE_3D_CANVAS_SCALE)
   context.clearRect(0, 0, width, height)
 
+  const bubbleInset = 16
+  const bubblePathWidth = width - bubbleInset
+  const bubblePathHeight = height - bubbleInset
+
+  context.save()
+  context.translate(bubbleInset / 2, bubbleInset / 2)
   context.shadowColor = 'rgba(0, 0, 0, 0.18)'
-  context.shadowBlur = 32
-  context.shadowOffsetY = 16
-  roundRectPath(context, 42, 46, width - 84, height - 92, 96)
+  context.shadowBlur = 18
+  context.shadowOffsetY = 8
+  ovalCanvasPath(context, bubblePathWidth, bubblePathHeight)
   context.fillStyle = 'rgba(255, 248, 223, 0.96)'
   context.fill()
 
   context.shadowColor = 'transparent'
-  context.lineWidth = 10
+  context.lineWidth = 4
   context.strokeStyle = 'rgba(85, 67, 42, 0.32)'
-  roundRectPath(context, 42, 46, width - 84, height - 92, 96)
+  ovalCanvasPath(context, bubblePathWidth, bubblePathHeight)
   context.stroke()
 
+  drawBubbleHighlight(context, bubblePathWidth, bubblePathHeight)
+  context.strokeStyle = 'rgba(255, 255, 255, 0.56)'
+  context.lineWidth = 3
+  context.lineCap = 'round'
+  context.stroke()
+  context.restore()
+
   context.fillStyle = '#1f2328'
-  context.font = '600 50px Arial, sans-serif'
+  context.font = `600 ${fontSize}px Arial, sans-serif`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
 
-  const lines = wrapCanvasText(context, text, width * 0.82)
-  const lineHeight = 64
   const firstY = height / 2 - ((lines.length - 1) * lineHeight) / 2
 
   lines.forEach((line, index) => {
@@ -465,7 +554,11 @@ function createBubbleTextTexture(text: string) {
   texture.magFilter = THREE.LinearFilter
   texture.needsUpdate = true
 
-  return texture
+  return {
+    texture,
+    worldWidth: width * SPEECH_BUBBLE_3D_WORLD_PER_PIXEL,
+    worldHeight: height * SPEECH_BUBBLE_3D_WORLD_PER_PIXEL
+  }
 }
 
 function SpeechBubbleAnchor({
@@ -574,15 +667,15 @@ function SpeechBubble3D({
   const anchorVector = useMemo(() => new THREE.Vector3().fromArray(anchorPosition), [anchorPosition])
   const tailVector = useMemo(() => new THREE.Vector3().fromArray(tailPosition), [tailPosition])
   const worldTailOffset = useMemo(() => tailVector.sub(anchorVector), [anchorVector, tailVector])
-  const textTexture = useMemo(() => createBubbleTextTexture(bubbleText), [bubbleText])
-  const width = variant === 'status' ? 1.55 : 1.95
-  const height = variant === 'status' ? 0.58 : 0.82
+  const bubbleTexture = useMemo(() => createBubbleTextTexture(bubbleText, variant), [bubbleText, variant])
+  const width = bubbleTexture?.worldWidth || (variant === 'status' ? 1.2 : 1.6)
+  const height = bubbleTexture?.worldHeight || (variant === 'status' ? 0.44 : 0.58)
 
   useEffect(() => {
     return () => {
-      textTexture?.dispose()
+      bubbleTexture?.texture.dispose()
     }
-  }, [textTexture])
+  }, [bubbleTexture])
 
   useFrame(() => {
     if (!groupRef.current) return
@@ -594,10 +687,10 @@ function SpeechBubble3D({
 
   return (
     <group ref={groupRef} position={anchorPosition} renderOrder={30}>
-      {textTexture && (
+      {bubbleTexture && (
         <mesh position={[0, 0.01, 0.006]} renderOrder={31}>
           <planeGeometry args={[width, height]} />
-          <meshBasicMaterial map={textTexture} transparent depthWrite={false} />
+          <meshBasicMaterial map={bubbleTexture.texture} transparent depthWrite={false} />
         </mesh>
       )}
       <line>
