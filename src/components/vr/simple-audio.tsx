@@ -56,6 +56,15 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
   // Cambiar a la siguiente pista
   const nextTrack = () => {
     console.log("⭐ nextTrack llamado - Cambiando a siguiente pista");
+    if (audioRef.current) {
+      if (audioRef.current.isPlaying) {
+        audioRef.current.stop()
+        console.log("⭐ Deteniendo la pista actual antes de cambiar")
+      }
+      audioRef.current.disconnect()
+      console.log("⭐ Desconectando la instancia de audio actual")
+    }
+
     const currentIndex = AUDIO_TRACKS.findIndex(track => track.id === currentTrackId)
     const nextIndex = (currentIndex + 1) % AUDIO_TRACKS.length
     console.log(`⭐ Cambiando de pista ${currentIndex} a ${nextIndex} (${AUDIO_TRACKS[nextIndex].name})`);
