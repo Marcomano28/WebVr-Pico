@@ -52,9 +52,19 @@ function loadEnvFiles(){
   });
 }
 
+function normalizeCorsOrigin(origin){
+  const trimmed = String(origin || '').trim();
+
+  if(!trimmed || trimmed === '*') return trimmed || '*';
+
+  return trimmed.replace(/\/+$/, '');
+}
+
 function corsHeaders(){
+  const allowOrigin = normalizeCorsOrigin(process.env.CORS_ORIGIN || '*');
+
   return {
-    'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
+    'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Beta-Access-Code'
   };
