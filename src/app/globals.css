@@ -73,8 +73,8 @@ canvas {
 .vr-error h3 {
   color: #ff4c4c;
   margin-bottom: 10px;
-  font-size: 1.2rem;
-  font-weight: bold;
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .vr-error p {
