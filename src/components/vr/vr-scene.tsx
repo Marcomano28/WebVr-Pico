@@ -398,29 +398,6 @@ function getBubble3DText(text: string, typing?: boolean) {
   return `${trimmed.slice(0, 337).trim()}...`
 }
 
-function ovalCanvasPath(context: CanvasRenderingContext2D, width: number, height: number) {
-  const cx = width / 2
-  const cy = height / 2
-  const rx = width / 2
-  const ry = height / 2
-  const kx = rx * 0.56
-  const ky = ry * 0.56
-
-  context.beginPath()
-  context.moveTo(cx, cy - ry)
-  context.bezierCurveTo(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy)
-  context.bezierCurveTo(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry)
-  context.bezierCurveTo(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy)
-  context.bezierCurveTo(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry)
-  context.closePath()
-}
-
-function drawBubbleHighlight(context: CanvasRenderingContext2D, width: number, height: number) {
-  context.beginPath()
-  context.moveTo(width * 0.28, height * 0.23)
-  context.bezierCurveTo(width * 0.41, height * 0.14, width * 0.63, height * 0.17, width * 0.68, height * 0.29)
-}
-
 function ellipsizeCanvasLine(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
   if (context.measureText(text).width <= maxWidth) return text
 
@@ -470,6 +447,160 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
   ]
 }
 
+function getBubbleEllipseExit(width: number, height: number, tipX: number, tipY: number) {
+  const angle = Math.atan2(tipY, tipX)
+  const rx = Math.max(width / 2 - 0.03, 0.01)
+  const ry = Math.max(height / 2 - 0.03, 0.01)
+  const scale = 1 / Math.sqrt(
+    (Math.cos(angle) ** 2) / (rx ** 2) +
+    (Math.sin(angle) ** 2) / (ry ** 2)
+  )
+
+  return {
+    x: Math.cos(angle) * scale,
+    y: Math.sin(angle) * scale
+  }
+}
+
+function createBubbleOvalGeometry(width: number, height: number) {
+  const shape = new THREE.Shape()
+
+  shape.absellipse(0, 0, width / 2, height / 2, 0, Math.PI * 2, false, 0)
+
+  return new THREE.ShapeGeometry(shape, 48)
+}
+
+function createBubbleTailGeometry(width: number, height: number, tip: [number, number]) {
+  const [tipX, tipY] = tip
+  const exit = getBubbleEllipseExit(width, height, tipX, tipY)
+  const dx = tipX - exit.x
+  const dy = tipY - exit.y
+  const distance = Math.hypot(dx, dy)
+
+  if (distance < 0.08) return null
+
+  const nx = -dy / distance
+  const ny = dx / distance
+  const baseWidth = clamp(distance * 0.075, 0.045, 0.105)
+  const bend = clamp(distance * 0.22, 0.12, 0.38) * (tipX >= exit.x ? 1 : -1)
+  const midX = (exit.x + tipX) / 2 + nx * bend
+  const midY = (exit.y + tipY) / 2 + ny * bend
+  const midWidth = baseWidth * 0.38
+  const shape = new THREE.Shape()
+
+  shape.moveTo(exit.x + nx * baseWidth, exit.y + ny * baseWidth)
+  shape.quadraticCurveTo(midX + nx * midWidth, midY + ny * midWidth, tipX + nx * 0.012, tipY + ny * 0.012)
+  shape.quadraticCurveTo(midX - nx * midWidth, midY - ny * midWidth, exit.x - nx * baseWidth, exit.y - ny * baseWidth)
+  shape.closePath()
+
+  return new THREE.ShapeGeometry(shape, 24)
+}
+
+function createEllipseLineGeometry(width: number, height: number) {
+  const points: THREE.Vector3[] = []
+  const steps = 96
+
+  for (let i = 0; i <= steps; i += 1) {
+    const angle = (i / steps) * Math.PI * 2
+
+    points.push(new THREE.Vector3(
+      Math.cos(angle) * width / 2,
+      Math.sin(angle) * height / 2,
+      0
+    ))
+  }
+
+  return new THREE.BufferGeometry().setFromPoints(points)
+}
+
+function createTailLineGeometry(width: number, height: number, tip: [number, number]) {
+  const [tipX, tipY] = tip
+  const exit = getBubbleEllipseExit(width, height, tipX, tipY)
+  const dx = tipX - exit.x
+  const dy = tipY - exit.y
+  const distance = Math.hypot(dx, dy)
+
+  if (distance < 0.08) return null
+
+  const nx = -dy / distance
+  const ny = dx / distance
+  const baseWidth = clamp(distance * 0.075, 0.045, 0.105)
+  const bend = clamp(distance * 0.22, 0.12, 0.38) * (tipX >= exit.x ? 1 : -1)
+  const midX = (exit.x + tipX) / 2 + nx * bend
+  const midY = (exit.y + tipY) / 2 + ny * bend
+  const midWidth = baseWidth * 0.38
+  const points: THREE.Vector3[] = []
+  const firstControl = new THREE.Vector2(midX + nx * midWidth, midY + ny * midWidth)
+  const secondControl = new THREE.Vector2(midX - nx * midWidth, midY - ny * midWidth)
+  const start = new THREE.Vector2(exit.x + nx * baseWidth, exit.y + ny * baseWidth)
+  const tipA = new THREE.Vector2(tipX + nx * 0.012, tipY + ny * 0.012)
+  const tipB = new THREE.Vector2(tipX - nx * 0.012, tipY - ny * 0.012)
+  const end = new THREE.Vector2(exit.x - nx * baseWidth, exit.y - ny * baseWidth)
+
+  for (let i = 0; i <= 14; i += 1) {
+    const t = i / 14
+    const inv = 1 - t
+
+    points.push(new THREE.Vector3(
+      inv * inv * start.x + 2 * inv * t * firstControl.x + t * t * tipA.x,
+      inv * inv * start.y + 2 * inv * t * firstControl.y + t * t * tipA.y,
+      0
+    ))
+  }
+
+  for (let i = 0; i <= 14; i += 1) {
+    const t = i / 14
+    const inv = 1 - t
+
+    points.push(new THREE.Vector3(
+      inv * inv * tipB.x + 2 * inv * t * secondControl.x + t * t * end.x,
+      inv * inv * tipB.y + 2 * inv * t * secondControl.y + t * t * end.y,
+      0
+    ))
+  }
+
+  points.push(points[0].clone())
+
+  return new THREE.BufferGeometry().setFromPoints(points)
+}
+
+function createBubbleHighlightGeometry(width: number, height: number) {
+  const start = new THREE.Vector2(width * -0.22, height * 0.27)
+  const controlA = new THREE.Vector2(width * -0.09, height * 0.36)
+  const controlB = new THREE.Vector2(width * 0.13, height * 0.33)
+  const end = new THREE.Vector2(width * 0.18, height * 0.21)
+  const points: THREE.Vector3[] = []
+
+  for (let i = 0; i <= 28; i += 1) {
+    const t = i / 28
+    const inv = 1 - t
+
+    points.push(new THREE.Vector3(
+      inv ** 3 * start.x + 3 * inv ** 2 * t * controlA.x + 3 * inv * t ** 2 * controlB.x + t ** 3 * end.x,
+      inv ** 3 * start.y + 3 * inv ** 2 * t * controlA.y + 3 * inv * t ** 2 * controlB.y + t ** 3 * end.y,
+      0
+    ))
+  }
+
+  return new THREE.BufferGeometry().setFromPoints(points)
+}
+
+function constrainBubbleTailTip(x: number, y: number, width: number, height: number): [number, number] {
+  const fallback: [number, number] = [0, -height * 0.86]
+  const distance = Math.hypot(x, y)
+
+  if (distance < 0.001) return fallback
+
+  const minDistance = Math.min(width, height) * 0.62
+  const maxDistance = Math.max(width, height) * 0.76
+  const nextDistance = clamp(distance, minDistance, maxDistance)
+
+  return [
+    (x / distance) * nextDistance,
+    (y / distance) * nextDistance
+  ]
+}
+
 function createBubbleTextTexture(text: string, variant: SpeechBubble3DProps['variant'] = 'dialogue'): SpeechBubble3DTexture | null {
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')
@@ -510,32 +641,6 @@ function createBubbleTextTexture(text: string, variant: SpeechBubble3DProps['var
 
   context.scale(SPEECH_BUBBLE_3D_CANVAS_SCALE, SPEECH_BUBBLE_3D_CANVAS_SCALE)
   context.clearRect(0, 0, width, height)
-
-  const bubbleInset = 16
-  const bubblePathWidth = width - bubbleInset
-  const bubblePathHeight = height - bubbleInset
-
-  context.save()
-  context.translate(bubbleInset / 2, bubbleInset / 2)
-  context.shadowColor = 'rgba(0, 0, 0, 0.18)'
-  context.shadowBlur = 18
-  context.shadowOffsetY = 8
-  ovalCanvasPath(context, bubblePathWidth, bubblePathHeight)
-  context.fillStyle = 'rgba(255, 248, 223, 0.96)'
-  context.fill()
-
-  context.shadowColor = 'transparent'
-  context.lineWidth = 4
-  context.strokeStyle = 'rgba(85, 67, 42, 0.32)'
-  ovalCanvasPath(context, bubblePathWidth, bubblePathHeight)
-  context.stroke()
-
-  drawBubbleHighlight(context, bubblePathWidth, bubblePathHeight)
-  context.strokeStyle = 'rgba(255, 255, 255, 0.56)'
-  context.lineWidth = 3
-  context.lineCap = 'round'
-  context.stroke()
-  context.restore()
 
   context.fillStyle = '#1f2328'
   context.font = `600 ${fontSize}px Arial, sans-serif`
@@ -664,12 +769,21 @@ function SpeechBubble3D({
   const groupRef = useRef<THREE.Group>(null)
   const { camera } = useThree()
   const bubbleText = useMemo(() => getBubble3DText(text, typing), [text, typing])
-  const anchorVector = useMemo(() => new THREE.Vector3().fromArray(anchorPosition), [anchorPosition])
-  const tailVector = useMemo(() => new THREE.Vector3().fromArray(tailPosition), [tailPosition])
-  const worldTailOffset = useMemo(() => tailVector.sub(anchorVector), [anchorVector, tailVector])
   const bubbleTexture = useMemo(() => createBubbleTextTexture(bubbleText, variant), [bubbleText, variant])
   const width = bubbleTexture?.worldWidth || (variant === 'status' ? 1.2 : 1.6)
   const height = bubbleTexture?.worldHeight || (variant === 'status' ? 0.44 : 0.58)
+  const [tailTip, setTailTip] = useState<[number, number]>(() => [0, -height * 0.86])
+  const frameVectors = useMemo(() => ({
+    anchor: new THREE.Vector3(),
+    tail: new THREE.Vector3(),
+    localTail: new THREE.Vector3(),
+    inverseCamera: new THREE.Quaternion()
+  }), [])
+  const ovalGeometry = useMemo(() => createBubbleOvalGeometry(width, height), [height, width])
+  const tailGeometry = useMemo(() => createBubbleTailGeometry(width, height, tailTip), [height, tailTip, width])
+  const ovalOutlineGeometry = useMemo(() => createEllipseLineGeometry(width, height), [height, width])
+  const tailOutlineGeometry = useMemo(() => createTailLineGeometry(width, height, tailTip), [height, tailTip, width])
+  const highlightGeometry = useMemo(() => createBubbleHighlightGeometry(width, height), [height, width])
 
   useEffect(() => {
     return () => {
@@ -677,31 +791,86 @@ function SpeechBubble3D({
     }
   }, [bubbleTexture])
 
+  useEffect(() => {
+    return () => {
+      ovalGeometry.dispose()
+    }
+  }, [ovalGeometry])
+
+  useEffect(() => {
+    return () => {
+      tailGeometry?.dispose()
+    }
+  }, [tailGeometry])
+
+  useEffect(() => {
+    return () => {
+      ovalOutlineGeometry.dispose()
+    }
+  }, [ovalOutlineGeometry])
+
+  useEffect(() => {
+    return () => {
+      tailOutlineGeometry?.dispose()
+    }
+  }, [tailOutlineGeometry])
+
+  useEffect(() => {
+    return () => {
+      highlightGeometry.dispose()
+    }
+  }, [highlightGeometry])
+
   useFrame(() => {
     if (!groupRef.current) return
 
     groupRef.current.quaternion.copy(camera.quaternion)
+    frameVectors.anchor.fromArray(anchorPosition)
+    frameVectors.tail.fromArray(tailPosition)
+    frameVectors.inverseCamera.copy(camera.quaternion).invert()
+    frameVectors.localTail
+      .copy(frameVectors.tail)
+      .sub(frameVectors.anchor)
+      .applyQuaternion(frameVectors.inverseCamera)
+
+    const nextTailTip = constrainBubbleTailTip(frameVectors.localTail.x, frameVectors.localTail.y, width, height)
+
+    setTailTip((previous) => (
+      Math.abs(previous[0] - nextTailTip[0]) < 0.025 && Math.abs(previous[1] - nextTailTip[1]) < 0.025
+        ? previous
+        : nextTailTip
+    ))
   })
 
   if (!visible || (!bubbleText && !typing)) return null
 
   return (
     <group ref={groupRef} position={anchorPosition} renderOrder={30}>
-      {bubbleTexture && (
-        <mesh position={[0, 0.01, 0.006]} renderOrder={31}>
-          <planeGeometry args={[width, height]} />
-          <meshBasicMaterial map={bubbleTexture.texture} transparent depthWrite={false} />
+      {tailGeometry && (
+        <mesh geometry={tailGeometry} position={[0, 0, -0.004]} renderOrder={30}>
+          <meshBasicMaterial color="#fff8df" transparent opacity={0.96} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       )}
-      <line>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array([0, -height * 0.42, -0.018, worldTailOffset.x, worldTailOffset.y, worldTailOffset.z]), 3]}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial color="#fff8df" transparent opacity={0.75} depthWrite={false} />
+      <mesh geometry={ovalGeometry} position={[0, 0, -0.003]} renderOrder={31}>
+        <meshBasicMaterial color="#fff8df" transparent opacity={0.96} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      {tailOutlineGeometry && (
+        <line geometry={tailOutlineGeometry} position={[0, 0, 0.001]} renderOrder={32}>
+          <lineBasicMaterial color="#55432a" transparent opacity={0.36} depthWrite={false} />
+        </line>
+      )}
+      <line geometry={ovalOutlineGeometry} position={[0, 0, 0.002]} renderOrder={33}>
+        <lineBasicMaterial color="#55432a" transparent opacity={0.38} depthWrite={false} />
       </line>
+      <line geometry={highlightGeometry} position={[0, 0, 0.003]} renderOrder={34}>
+        <lineBasicMaterial color="#ffffff" transparent opacity={0.58} depthWrite={false} />
+      </line>
+      {bubbleTexture && (
+        <mesh position={[0, 0, 0.006]} renderOrder={35}>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial map={bubbleTexture.texture} transparent alphaTest={0.02} depthWrite={false} />
+        </mesh>
+      )}
     </group>
   )
 }
