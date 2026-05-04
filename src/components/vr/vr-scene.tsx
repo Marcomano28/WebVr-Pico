@@ -293,6 +293,7 @@ interface SpeechBubble3DProps {
   typing?: boolean
   anchorPosition: VectorTuple
   tailPosition: VectorTuple
+  variant?: 'dialogue' | 'status'
 }
 
 const VOICE_RECORDING_MIME_TYPES = [
@@ -302,6 +303,8 @@ const VOICE_RECORDING_MIME_TYPES = [
   'audio/mpeg',
   'audio/wav'
 ]
+const VOICE_RECORDING_MIN_DURATION_MS = 900
+const VOICE_RECORDING_MAX_DURATION_MS = 8000
 
 type VoiceInputStatus = 'idle' | 'recording' | 'transcribing'
 
@@ -353,6 +356,22 @@ function getBubble3DText(text: string, typing?: boolean) {
   return `${trimmed.slice(0, 217).trim()}...`
 }
 
+function roundRectPath(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height / 2)
+
+  context.beginPath()
+  context.moveTo(x + r, y)
+  context.lineTo(x + width - r, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + r)
+  context.lineTo(x + width, y + height - r)
+  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height)
+  context.lineTo(x + r, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - r)
+  context.lineTo(x, y + r)
+  context.quadraticCurveTo(x, y, x + r, y)
+  context.closePath()
+}
+
 function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
   const words = text.split(/\s+/).filter(Boolean)
   const lines: string[] = []
@@ -389,8 +408,22 @@ function createBubbleTextTexture(text: string) {
   if (!context) return null
 
   context.clearRect(0, 0, width, height)
+
+  context.shadowColor = 'rgba(0, 0, 0, 0.18)'
+  context.shadowBlur = 32
+  context.shadowOffsetY = 16
+  roundRectPath(context, 42, 46, width - 84, height - 92, 96)
+  context.fillStyle = 'rgba(255, 248, 223, 0.96)'
+  context.fill()
+
+  context.shadowColor = 'transparent'
+  context.lineWidth = 10
+  context.strokeStyle = 'rgba(85, 67, 42, 0.32)'
+  roundRectPath(context, 42, 46, width - 84, height - 92, 96)
+  context.stroke()
+
   context.fillStyle = '#1f2328'
-  context.font = '500 52px Arial, sans-serif'
+  context.font = '600 50px Arial, sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
 
@@ -508,7 +541,8 @@ function SpeechBubble3D({
   text,
   typing = false,
   anchorPosition,
-  tailPosition
+  tailPosition,
+  variant = 'dialogue'
 }: SpeechBubble3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const { camera } = useThree()
@@ -517,8 +551,8 @@ function SpeechBubble3D({
   const tailVector = useMemo(() => new THREE.Vector3().fromArray(tailPosition), [tailPosition])
   const worldTailOffset = useMemo(() => tailVector.sub(anchorVector), [anchorVector, tailVector])
   const textTexture = useMemo(() => createBubbleTextTexture(bubbleText), [bubbleText])
-  const width = 1.85
-  const height = 0.72
+  const width = variant === 'status' ? 1.55 : 1.95
+  const height = variant === 'status' ? 0.58 : 0.82
 
   useEffect(() => {
     return () => {
@@ -536,17 +570,9 @@ function SpeechBubble3D({
 
   return (
     <group ref={groupRef} position={anchorPosition} renderOrder={30}>
-      <mesh position={[0, 0, -0.012]}>
-        <planeGeometry args={[width, height]} />
-        <meshBasicMaterial color="#fff8df" transparent opacity={0.94} depthWrite={false} />
-      </mesh>
-      <mesh position={[-width * 0.34, -height * 0.46, -0.01]} rotation={[0, 0, -0.55]}>
-        <coneGeometry args={[0.13, 0.34, 3]} />
-        <meshBasicMaterial color="#fff8df" transparent opacity={0.94} depthWrite={false} />
-      </mesh>
       {textTexture && (
-        <mesh position={[0, 0.01, 0.006]}>
-          <planeGeometry args={[width * 0.92, height * 0.78]} />
+        <mesh position={[0, 0.01, 0.006]} renderOrder={31}>
+          <planeGeometry args={[width, height]} />
           <meshBasicMaterial map={textTexture} transparent depthWrite={false} />
         </mesh>
       )}
@@ -717,7 +743,8 @@ export function VRScene() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const voiceChunksRef = useRef<Blob[]>([])
-  const voicePressActiveRef = useRef(false)
+  const voiceRecordingStartedAtRef = useRef(0)
+  const voiceAutoStopTimeoutRef = useRef<number | null>(null)
 
   // Estado para rastrear si el modelo está cargado
   const [modelLoaded, setModelLoaded] = useState(false)
@@ -1067,6 +1094,8 @@ export function VRScene() {
   }, [sceneMode, sendAgentMessage])
 
   const handleVoiceRecordingComplete = useCallback(async (audioBlob: Blob, feedbackSpeaker: AgentId) => {
+    const recordingDuration = Date.now() - voiceRecordingStartedAtRef.current
+
     setVoiceStatus('transcribing')
     setThinkingAgent(feedbackSpeaker)
     setActiveDialogue({
@@ -1076,7 +1105,7 @@ export function VRScene() {
     })
 
     try {
-      if (audioBlob.size < 512) {
+      if (recordingDuration < VOICE_RECORDING_MIN_DURATION_MS || audioBlob.size < 512) {
         throw new Error('La grabacion fue demasiado corta')
       }
 
@@ -1091,7 +1120,7 @@ export function VRScene() {
       setThinkingAgent(null)
       setActiveDialogue({
         speaker: feedbackSpeaker,
-        text: 'No pude transcribir bien la pregunta. Prueba otra vez manteniendo pulsado el micro un poco mas.',
+        text: 'No pude transcribir bien la pregunta. Pulsa el micro, habla durante un segundo o mas, y vuelve a pulsarlo para enviar.',
         reveal: false
       })
     }
@@ -1101,6 +1130,11 @@ export function VRScene() {
     const recorder = mediaRecorderRef.current
 
     if (!recorder || recorder.state === 'inactive') return
+
+    if (voiceAutoStopTimeoutRef.current !== null) {
+      window.clearTimeout(voiceAutoStopTimeoutRef.current)
+      voiceAutoStopTimeoutRef.current = null
+    }
 
     recorder.stop()
     mediaRecorderRef.current = null
@@ -1158,18 +1192,16 @@ export function VRScene() {
       }
 
       recorder.start(250)
-
-      if (!voicePressActiveRef.current) {
-        recorder.stop()
-        mediaRecorderRef.current = null
-        return
-      }
+      voiceRecordingStartedAtRef.current = Date.now()
+      voiceAutoStopTimeoutRef.current = window.setTimeout(() => {
+        stopVoiceRecording()
+      }, VOICE_RECORDING_MAX_DURATION_MS)
 
       setVoiceStatus('recording')
       setThinkingAgent(feedbackSpeaker)
       setActiveDialogue({
         speaker: feedbackSpeaker,
-        text: 'Te escucho...',
+        text: 'Te escucho. Vuelve a pulsar el micro para enviar.',
         reveal: false
       })
     } catch (error) {
@@ -1185,21 +1217,18 @@ export function VRScene() {
         reveal: false
       })
     }
-  }, [getVoiceFeedbackSpeaker, handleVoiceRecordingComplete, voiceStatus])
+  }, [getVoiceFeedbackSpeaker, handleVoiceRecordingComplete, stopVoiceRecording, voiceStatus])
 
-  const handleVoiceRecordStart = useCallback(() => {
-    voicePressActiveRef.current = true
+  const handleVoiceButtonSelect = useCallback(() => {
+    if (voiceStatus === 'recording') {
+      stopVoiceRecording()
+      return
+    }
 
     if (voiceStatus !== 'idle') return
 
     void startVoiceRecording()
-  }, [startVoiceRecording, voiceStatus])
-
-  const handleVoiceRecordEnd = useCallback(() => {
-    voicePressActiveRef.current = false
-
-    stopVoiceRecording()
-  }, [stopVoiceRecording])
+  }, [startVoiceRecording, stopVoiceRecording, voiceStatus])
 
   const handleAudioButtonSelect = useCallback(() => {
     const audio = audioRef.current
@@ -1251,6 +1280,10 @@ export function VRScene() {
         window.clearTimeout(dialogueTimeoutRef.current)
       }
 
+      if (voiceAutoStopTimeoutRef.current !== null) {
+        window.clearTimeout(voiceAutoStopTimeoutRef.current)
+      }
+
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.onstop = null
         mediaRecorderRef.current.stop()
@@ -1275,6 +1308,9 @@ export function VRScene() {
       ? '#00bfff'
       : 'green'
   const voiceButtonScale = voiceStatus === 'recording' ? 1.35 : 1
+  const bubble3DVariant = voiceStatus === 'recording' || voiceStatus === 'transcribing'
+    ? 'status'
+    : 'dialogue'
 
   return (
     <>
@@ -1406,6 +1442,7 @@ export function VRScene() {
             typing={thinkingAgent === 'sami'}
             anchorPosition={AGENT_BUBBLE_POINTS.sami.anchorPosition}
             tailPosition={AGENT_BUBBLE_POINTS.sami.tailPosition}
+            variant={bubble3DVariant}
           />
 
           <SpeechBubble3D
@@ -1414,6 +1451,7 @@ export function VRScene() {
             typing={thinkingAgent === 'alfred'}
             anchorPosition={AGENT_BUBBLE_POINTS.alfred.anchorPosition}
             tailPosition={AGENT_BUBBLE_POINTS.alfred.tailPosition}
+            variant={bubble3DVariant}
           />
 
           <SpeechBubble3D
@@ -1422,6 +1460,7 @@ export function VRScene() {
             typing={thinkingAgent === 'paco'}
             anchorPosition={AGENT_BUBBLE_POINTS.paco.anchorPosition}
             tailPosition={AGENT_BUBBLE_POINTS.paco.tailPosition}
+            variant={bubble3DVariant}
           />
 
           {/* Controles de movimiento básicos */}
@@ -1432,11 +1471,8 @@ export function VRScene() {
             smoothing={12}
           />
 
-          {/* Esfera verde: microfono push-to-talk para STT */}
-          <Interactive
-            onSelectStart={handleVoiceRecordStart}
-            onSelectEnd={handleVoiceRecordEnd}
-          >
+          {/* Esfera verde: microfono alternable para STT */}
+          <Interactive onSelect={handleVoiceButtonSelect}>
             <mesh position={[0, 0.1, -1]} scale={voiceButtonScale}>
               <sphereGeometry args={[0.05]} />
               <meshStandardMaterial color={voiceButtonColor} emissive={voiceButtonEmissive} emissiveIntensity={0.8} />
