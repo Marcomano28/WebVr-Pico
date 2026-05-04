@@ -11,6 +11,7 @@ interface ModelLoaderProps {
   rotation?: [number, number, number]
   scale?: number | [number, number, number]
   removePlane?: boolean
+  lockedAnimationName?: string
   initialAnimationIndex?: number
   onLoad?: () => void
 }
@@ -27,6 +28,7 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
   rotation = [0, 0, 0],
   scale = 1,
   removePlane = true,
+  lockedAnimationName,
   initialAnimationIndex = 0,
   onLoad
 }, ref) => {
@@ -50,10 +52,13 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
     
     if (names.length > 0) {
       console.log(`Modelo ${url} cargado con ${names.length} animaciones:`, names)
-      
+
+      const lockedAnimName = lockedAnimationName && names.includes(lockedAnimationName)
+        ? lockedAnimationName
+        : null
       const animIndex = Math.min(Math.max(0, initialAnimationIndex), names.length - 1);
-      const animName = names[animIndex];
-      
+      const animName = lockedAnimName || names[animIndex];
+
       if (actions[animName]) {
         playAnimation(animName)
         console.log(`Reproduciendo animación inicial: ${animName}`)
@@ -72,10 +77,14 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
     if (onLoad) {
       onLoad()
     }
-  }, [scene, actions, names, url, removePlane, initialAnimationIndex, onLoad])
-  
+  }, [scene, actions, names, url, removePlane, lockedAnimationName, initialAnimationIndex, onLoad])
+
   const playAnimation = (name: string): boolean => {
     if (!actions || !actions[name]) return false
+    if (lockedAnimationName && name !== lockedAnimationName) {
+      console.log(`Animación bloqueada en ${lockedAnimationName}; se ignora ${name}`)
+      return false
+    }
     
     console.log(`Reproduciendo animación: ${name}`)
     
@@ -91,7 +100,9 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
   useImperativeHandle(ref, () => ({
     playAnimation,
     getCurrentAnimation: () => currentAnimation,
-    getAnimationNames: () => names
+    getAnimationNames: () => lockedAnimationName && names.includes(lockedAnimationName)
+      ? [lockedAnimationName]
+      : names
   }))
   
   const finalScale = typeof scale === 'number' 
@@ -112,4 +123,4 @@ const ModelLoader = forwardRef<GLTFModelHandle, ModelLoaderProps>(({
 
 ModelLoader.displayName = 'ModelLoader'
 
-export default ModelLoader 
+export default ModelLoader
