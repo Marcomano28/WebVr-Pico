@@ -4,7 +4,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import * as THREE from 'three'
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber'
 import { VRButton, XR, Controllers, Hands, Interactive } from '@react-three/xr'
-import { Environment, OrbitControls } from '@react-three/drei'
+import { Environment, OrbitControls, Text } from '@react-three/drei'
 import MovementEnhanced from './controls/movement-enhanced'
 import ModelLoader, { GLTFModelHandle } from './models/model-loader'
 import { Floor } from './floor'
@@ -287,6 +287,14 @@ interface SpeechBubbleAnchorProps {
   onPlacementChange: (placement: SpeechBubblePlacement) => void
 }
 
+interface SpeechBubble3DProps {
+  visible: boolean
+  text: string
+  typing?: boolean
+  anchorPosition: VectorTuple
+  tailPosition: VectorTuple
+}
+
 const VOICE_RECORDING_MIME_TYPES = [
   'audio/webm;codecs=opus',
   'audio/webm',
@@ -332,6 +340,17 @@ function blobToBase64(blob: Blob) {
 
 function stopMediaStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop())
+}
+
+function getBubble3DText(text: string, typing?: boolean) {
+  if (typing) return '...'
+
+  const trimmed = text.trim()
+
+  if (!trimmed) return ''
+  if (trimmed.length <= 220) return trimmed
+
+  return `${trimmed.slice(0, 217).trim()}...`
 }
 
 function SpeechBubbleAnchor({
@@ -424,6 +443,66 @@ function SpeechBubbleAnchor({
   })
 
   return null
+}
+
+function SpeechBubble3D({
+  visible,
+  text,
+  typing = false,
+  anchorPosition,
+  tailPosition
+}: SpeechBubble3DProps) {
+  const groupRef = useRef<THREE.Group>(null)
+  const { camera } = useThree()
+  const bubbleText = useMemo(() => getBubble3DText(text, typing), [text, typing])
+  const anchorVector = useMemo(() => new THREE.Vector3().fromArray(anchorPosition), [anchorPosition])
+  const tailVector = useMemo(() => new THREE.Vector3().fromArray(tailPosition), [tailPosition])
+  const worldTailOffset = useMemo(() => tailVector.sub(anchorVector), [anchorVector, tailVector])
+  const width = 1.85
+  const height = 0.72
+
+  useFrame(() => {
+    if (!groupRef.current) return
+
+    groupRef.current.quaternion.copy(camera.quaternion)
+  })
+
+  if (!visible || (!bubbleText && !typing)) return null
+
+  return (
+    <group ref={groupRef} position={anchorPosition} renderOrder={30}>
+      <mesh position={[0, 0, -0.012]}>
+        <planeGeometry args={[width, height]} />
+        <meshBasicMaterial color="#fff8df" transparent opacity={0.94} depthWrite={false} />
+      </mesh>
+      <mesh position={[-width * 0.34, -height * 0.46, -0.01]} rotation={[0, 0, -0.55]}>
+        <coneGeometry args={[0.13, 0.34, 3]} />
+        <meshBasicMaterial color="#fff8df" transparent opacity={0.94} depthWrite={false} />
+      </mesh>
+      <Text
+        position={[0, 0.01, 0.006]}
+        fontSize={0.085}
+        maxWidth={width * 0.82}
+        lineHeight={1.12}
+        color="#1f2328"
+        anchorX="center"
+        anchorY="middle"
+        textAlign="center"
+        depthOffset={-10}
+      >
+        {bubbleText}
+      </Text>
+      <line>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[new Float32Array([0, -height * 0.42, -0.018, worldTailOffset.x, worldTailOffset.y, worldTailOffset.z]), 3]}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial color="#fff8df" transparent opacity={0.75} depthWrite={false} />
+      </line>
+    </group>
+  )
 }
 
 function placementIsClose(previous: SpeechBubblePlacement | null, next: SpeechBubblePlacement) {
@@ -1261,6 +1340,30 @@ export function VRScene() {
             bubbleSize={bubbleSizes.paco}
             onPlacementChange={handlePacoBubblePlacementChange}
             {...AGENT_BUBBLE_POINTS.paco}
+          />
+
+          <SpeechBubble3D
+            text={activeDialogue.speaker === 'sami' ? activeDialogue.text : ''}
+            visible={samiBubbleVisible}
+            typing={thinkingAgent === 'sami'}
+            anchorPosition={AGENT_BUBBLE_POINTS.sami.anchorPosition}
+            tailPosition={AGENT_BUBBLE_POINTS.sami.tailPosition}
+          />
+
+          <SpeechBubble3D
+            text={activeDialogue.speaker === 'alfred' ? activeDialogue.text : ''}
+            visible={alfredBubbleVisible}
+            typing={thinkingAgent === 'alfred'}
+            anchorPosition={AGENT_BUBBLE_POINTS.alfred.anchorPosition}
+            tailPosition={AGENT_BUBBLE_POINTS.alfred.tailPosition}
+          />
+
+          <SpeechBubble3D
+            text={activeDialogue.speaker === 'paco' ? activeDialogue.text : ''}
+            visible={pacoBubbleVisible}
+            typing={thinkingAgent === 'paco'}
+            anchorPosition={AGENT_BUBBLE_POINTS.paco.anchorPosition}
+            tailPosition={AGENT_BUBBLE_POINTS.paco.tailPosition}
           />
 
           {/* Controles de movimiento básicos */}
