@@ -279,12 +279,29 @@ async function handleTranscribe(body, res){
 
   const format = normalizeAudioFormat(body.format, body.mimeType);
   const language = body.language || process.env.OPENROUTER_STT_LANGUAGE || 'es';
+
+  console.log('[stt] request', {
+    sessionId,
+    format,
+    mimeType: body.mimeType || null,
+    language,
+    durationMs: body.durationMs || null,
+    sizeBytes: body.sizeBytes || null,
+    base64Length: audioBase64.length
+  });
+
   const result = await createAudioTranscription({
     audioBase64,
     format,
     language,
     sessionId,
     model: process.env.OPENROUTER_STT_MODEL
+  });
+
+  console.log('[stt] success', {
+    sessionId,
+    model: result.model,
+    textLength: result.text.length
   });
 
   sendJson(res, 200, {

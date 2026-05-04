@@ -345,6 +345,20 @@ function stopMediaStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop())
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error || 'Error desconocido')
+}
+
+function formatShortError(message: string) {
+  const normalized = message.replace(/\s+/g, ' ').trim()
+
+  if (normalized.length <= 150) return normalized
+
+  return `${normalized.slice(0, 147)}...`
+}
+
 function getBubble3DText(text: string, typing?: boolean) {
   if (typing) return '...'
 
@@ -1004,9 +1018,18 @@ export function VRScene() {
     }
   }, [ensureChatSessionId, readAgentMessageStream])
 
-  const transcribeAudio = useCallback(async (audioBlob: Blob) => {
+  const transcribeAudio = useCallback(async (audioBlob: Blob, durationMs: number) => {
     const audioBase64 = await blobToBase64(audioBlob)
     const mimeType = audioBlob.type || 'audio/webm'
+    const format = getAudioFormatFromMimeType(mimeType)
+
+    console.log('[stt] sending audio', {
+      mimeType,
+      format,
+      sizeBytes: audioBlob.size,
+      durationMs
+    })
+
     const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
       method: 'POST',
       headers: {
@@ -1016,15 +1039,17 @@ export function VRScene() {
         sessionId: ensureChatSessionId(),
         audioBase64,
         mimeType,
-        format: getAudioFormatFromMimeType(mimeType),
-        language: 'es'
+        format,
+        language: 'es',
+        durationMs,
+        sizeBytes: audioBlob.size
       })
     })
 
     const payload: TranscriptionResult = await response.json().catch(() => ({}))
 
     if (!response.ok) {
-      throw new Error(payload.error || `Transcription request failed (${response.status})`)
+      throw new Error(`STT ${response.status}: ${payload.error || 'Transcription request failed'}`)
     }
 
     const text = String(payload.text || '').trim()
@@ -1109,18 +1134,20 @@ export function VRScene() {
         throw new Error('La grabacion fue demasiado corta')
       }
 
-      const transcript = await transcribeAudio(audioBlob)
+      const transcript = await transcribeAudio(audioBlob, recordingDuration)
 
       console.log(`Transcripción STT: ${transcript}`)
       setVoiceStatus('idle')
       await askBackendQuestion(transcript)
     } catch (error) {
-      console.error(error)
+      const message = getErrorMessage(error)
+
+      console.error('[stt] failed', error)
       setVoiceStatus('idle')
       setThinkingAgent(null)
       setActiveDialogue({
         speaker: feedbackSpeaker,
-        text: 'No pude transcribir bien la pregunta. Pulsa el micro, habla durante un segundo o mas, y vuelve a pulsarlo para enviar.',
+        text: `STT fallo: ${formatShortError(message)}`,
         reveal: false
       })
     }

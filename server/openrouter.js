@@ -200,6 +200,11 @@ async function createAudioTranscription({audioBase64, format, language, sessionI
     const error = new Error(message);
     error.status = response.status;
     error.payload = payload;
+    console.error('[openrouter:stt]', {
+      status: response.status,
+      message,
+      payload
+    });
     throw error;
   }
 
