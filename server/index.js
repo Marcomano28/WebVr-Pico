@@ -530,3 +530,25 @@ server.listen(PORT, HOST, () => {
   console.log(`WebVR Car Agents API listening on http://${HOST}:${PORT}`);
   console.log(`Provider: ${hasOpenRouterKey() ? 'openrouter' : 'local-fallback'} (${getOpenRouterModel()})`);
 });
+
+function shutdown(signal){
+  console.log(`Received ${signal}, shutting down gracefully...`);
+
+  server.close((error) => {
+    if(error){
+      console.error('Error while closing server:', error);
+      process.exit(1);
+      return;
+    }
+
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.warn('Forced shutdown after timeout.');
+    process.exit(1);
+  }, 8000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
