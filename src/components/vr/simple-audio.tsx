@@ -211,4 +211,6 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
   return null
 });
 
-export default SimpleAudio; 
+export default SimpleAudio;
+
+SimpleAudio.displayName = 'SimpleAudio'; 
