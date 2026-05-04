@@ -6,9 +6,11 @@ const {AGENTS, getAgent, getPublicAgents, selectAgentForMessage} = require('./ag
 const {createMemoryStore} = require('./memory');
 const {buildChatMessages, createFallbackReply} = require('./prompts');
 const {
+  createAudioTranscription,
   createChatCompletion,
   createChatCompletionStream,
   getOpenRouterModel,
+  getOpenRouterTranscriptionModel,
   hasOpenRouterKey
 } = require('./openrouter');
 
@@ -16,7 +18,7 @@ loadEnvFiles();
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
-const MAX_BODY_SIZE = 1024 * 1024;
+const MAX_BODY_SIZE = Number(process.env.MAX_BODY_SIZE_BYTES || 8 * 1024 * 1024);
 const BETA_ACCESS_HEADER = 'x-beta-access-code';
 const CHAT_RATE_LIMIT_WINDOW_MS = Number(process.env.CHAT_RATE_LIMIT_WINDOW_MS || 10 * 60 * 1000);
 const CHAT_RATE_LIMIT_MAX = Number(process.env.CHAT_RATE_LIMIT_MAX || 40);
@@ -182,6 +184,36 @@ function readJsonBody(req){
   });
 }
 
+function normalizeAudioFormat(format, mimeType){
+  const requestedFormat = String(format || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  if(requestedFormat){
+    if(requestedFormat === 'mpeg') return 'mp3';
+    if(requestedFormat === 'mp4') return 'm4a';
+    return requestedFormat;
+  }
+
+  const mime = String(mimeType || '').toLowerCase();
+
+  if(mime.includes('webm')) return 'webm';
+  if(mime.includes('wav')) return 'wav';
+  if(mime.includes('mpeg') || mime.includes('mp3')) return 'mp3';
+  if(mime.includes('mp4') || mime.includes('m4a')) return 'm4a';
+  if(mime.includes('ogg')) return 'ogg';
+  if(mime.includes('aac')) return 'aac';
+  if(mime.includes('flac')) return 'flac';
+
+  return 'webm';
+}
+
+function getAudioBase64(body){
+  const rawAudio = String(body.audioBase64 || body.audio || '').trim();
+
+  if(!rawAudio) return '';
+
+  return rawAudio.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+}
+
 function resolveChatAgent(body){
   if(body.agentId && body.agentId !== 'auto'){
     const agent = getAgent(body.agentId);
@@ -234,6 +266,35 @@ function finalizeChatTurn(context, content){
   memory.appendMessage(context.sessionId, context.agentId, {
     role: 'assistant',
     content
+  });
+}
+
+async function handleTranscribe(body, res){
+  const sessionId = body.sessionId || randomUUID();
+  const audioBase64 = getAudioBase64(body);
+
+  if(!audioBase64){
+    throw Object.assign(new Error('audioBase64 is required'), {status: 400});
+  }
+
+  const format = normalizeAudioFormat(body.format, body.mimeType);
+  const language = body.language || process.env.OPENROUTER_STT_LANGUAGE || 'es';
+  const result = await createAudioTranscription({
+    audioBase64,
+    format,
+    language,
+    sessionId,
+    model: process.env.OPENROUTER_STT_MODEL
+  });
+
+  sendJson(res, 200, {
+    sessionId,
+    text: result.text,
+    provider: 'openrouter',
+    model: result.model,
+    usage: result.usage,
+    format,
+    language
   });
 }
 
@@ -376,6 +437,7 @@ async function route(req, res){
       ok: true,
       provider: hasOpenRouterKey() ? 'openrouter' : 'local-fallback',
       model: getOpenRouterModel(),
+      sttModel: getOpenRouterTranscriptionModel(),
       agents: AGENTS.length
     });
     return;
@@ -411,6 +473,16 @@ async function route(req, res){
     }
 
     await handleChat(body, res);
+    return;
+  }
+
+  if(req.method === 'POST' && path === '/api/transcribe'){
+    if(!requireBetaAccess(req, res)) return;
+    if(!requireChatRateLimit(req, res)) return;
+
+    const body = await readJsonBody(req);
+
+    await handleTranscribe(body, res);
     return;
   }
 

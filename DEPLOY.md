@@ -22,10 +22,14 @@ CHAT_RATE_LIMIT_MAX=40
 
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_STT_MODEL=openai/whisper-large-v3
+OPENROUTER_STT_LANGUAGE=es
+OPENROUTER_STT_TEMPERATURE=0
 OPENROUTER_APP_NAME=WebVR Car Agents
 OPENROUTER_SITE_URL=https://TU-FRONT.vercel.app
 OPENROUTER_TEMPERATURE=0.72
 OPENROUTER_MAX_TOKENS=360
+MAX_BODY_SIZE_BYTES=8388608
 ```
 
 Opcional:
@@ -87,6 +91,14 @@ Chat streaming:
 curl -i -N https://TU-API.up.railway.app/api/chat \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"demo","agentId":"auto","message":"¿Cuál suena más emocional?","stream":true}'
+```
+
+STT:
+
+```sh
+curl -i https://TU-API.up.railway.app/api/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"demo","audioBase64":"BASE64_WEBM_O_WAV","format":"webm","language":"es"}'
 ```
 
 ## 4. Seguridad Minima

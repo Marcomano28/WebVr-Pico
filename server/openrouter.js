@@ -1,4 +1,6 @@
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1';
+const OPENROUTER_CHAT_URL = `${OPENROUTER_API_BASE_URL}/chat/completions`;
+const OPENROUTER_TRANSCRIPTION_URL = `${OPENROUTER_API_BASE_URL}/audio/transcriptions`;
 
 function hasOpenRouterKey(){
   return Boolean(process.env.OPENROUTER_API_KEY);
@@ -6,6 +8,10 @@ function hasOpenRouterKey(){
 
 function getOpenRouterModel(agent = null){
   return agent?.model || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+}
+
+function getOpenRouterTranscriptionModel(){
+  return process.env.OPENROUTER_STT_MODEL || 'openai/whisper-large-v3';
 }
 
 function buildOpenRouterHeaders(apiKey, sessionId){
@@ -75,7 +81,7 @@ async function createChatCompletion({messages, sessionId, agentId, model}){
     throw new Error('Missing OPENROUTER_API_KEY');
   }
 
-  const response = await fetch(OPENROUTER_URL, {
+  const response = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: buildOpenRouterHeaders(apiKey, sessionId),
     body: buildOpenRouterBody({messages, sessionId, agentId, model})
@@ -111,7 +117,7 @@ async function createChatCompletionStream({messages, sessionId, agentId, model, 
     throw new Error('Missing OPENROUTER_API_KEY');
   }
 
-  const response = await fetch(OPENROUTER_URL, {
+  const response = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: buildOpenRouterHeaders(apiKey, sessionId),
     body: buildOpenRouterBody({messages, sessionId, agentId, model, stream: true})
@@ -167,9 +173,54 @@ async function createChatCompletionStream({messages, sessionId, agentId, model, 
   };
 }
 
+async function createAudioTranscription({audioBase64, format, language, sessionId, model}){
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if(!apiKey){
+    throw new Error('Missing OPENROUTER_API_KEY');
+  }
+
+  const response = await fetch(OPENROUTER_TRANSCRIPTION_URL, {
+    method: 'POST',
+    headers: buildOpenRouterHeaders(apiKey, sessionId || 'stt'),
+    body: JSON.stringify({
+      model: model || getOpenRouterTranscriptionModel(),
+      input_audio: {
+        data: audioBase64,
+        format
+      },
+      language: language || process.env.OPENROUTER_STT_LANGUAGE || 'es',
+      temperature: Number(process.env.OPENROUTER_STT_TEMPERATURE || 0)
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if(!response.ok){
+    const message = payload?.error?.message || payload?.message || `OpenRouter transcription failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  const text = String(payload.text || '').trim();
+
+  if(!text){
+    throw new Error('OpenRouter returned an empty transcription');
+  }
+
+  return {
+    text,
+    model: payload.model || model || getOpenRouterTranscriptionModel(),
+    usage: payload.usage || null
+  };
+}
+
 module.exports = {
+  createAudioTranscription,
   createChatCompletion,
   createChatCompletionStream,
   getOpenRouterModel,
+  getOpenRouterTranscriptionModel,
   hasOpenRouterKey
 };

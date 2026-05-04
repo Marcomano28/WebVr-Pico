@@ -144,15 +144,6 @@ const INTRO_DIALOGUE: DialogueLine[] = [
   }
 ]
 
-const DEMO_STT_RESPONSES: { question: string }[] = [
-  {
-    question: 'Que coche es mas radical?'
-  },
-  {
-    question: 'Cual suena mas emocional?'
-  }
-]
-
 function vectorToTuple(vector: THREE.Vector3): VectorTuple {
   return [vector.x, vector.y, vector.z]
 }
@@ -282,6 +273,11 @@ interface AgentMessageResult {
   content: string
 }
 
+interface TranscriptionResult {
+  text?: string
+  error?: string
+}
+
 interface SpeechBubbleAnchorProps {
   visible: boolean
   bubbleSize: SpeechBubbleSize
@@ -289,6 +285,53 @@ interface SpeechBubbleAnchorProps {
   directionPosition: VectorTuple
   anchorPosition: VectorTuple
   onPlacementChange: (placement: SpeechBubblePlacement) => void
+}
+
+const VOICE_RECORDING_MIME_TYPES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/wav'
+]
+
+type VoiceInputStatus = 'idle' | 'recording' | 'transcribing'
+
+function getSupportedAudioMimeType() {
+  if (typeof MediaRecorder === 'undefined') return ''
+
+  return VOICE_RECORDING_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || ''
+}
+
+function getAudioFormatFromMimeType(mimeType: string) {
+  const normalized = mimeType.toLowerCase()
+
+  if (normalized.includes('webm')) return 'webm'
+  if (normalized.includes('wav')) return 'wav'
+  if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3'
+  if (normalized.includes('mp4') || normalized.includes('m4a')) return 'm4a'
+  if (normalized.includes('ogg')) return 'ogg'
+
+  return 'webm'
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onloadend = () => {
+      const result = String(reader.result || '')
+      const [, base64 = ''] = result.split(',')
+
+      resolve(base64)
+    }
+    reader.onerror = () => reject(reader.error || new Error('Could not read audio blob'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function stopMediaStream(stream: MediaStream | null) {
+  stream?.getTracks().forEach((track) => track.stop())
 }
 
 function SpeechBubbleAnchor({
@@ -534,12 +577,16 @@ export function VRScene() {
   const dialogueTimeoutRef = useRef<number | null>(null)
   const chatSessionIdRef = useRef<string | null>(null)
   const chatRequestTokenRef = useRef(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const voiceChunksRef = useRef<Blob[]>([])
+  const voicePressActiveRef = useRef(false)
 
   // Estado para rastrear si el modelo está cargado
   const [modelLoaded, setModelLoaded] = useState(false)
   const [activeDialogue, setActiveDialogue] = useState<DialogueLine>(INTRO_DIALOGUE[0])
   const [thinkingAgent, setThinkingAgent] = useState<AgentId | null>(null)
-  const [demoQuestionIndex, setDemoQuestionIndex] = useState(0)
+  const [voiceStatus, setVoiceStatus] = useState<VoiceInputStatus>('idle')
   const [sceneMode, setSceneMode] = useState<SceneMode>('showroom')
   const [bubbleSizes, setBubbleSizes] = useState<Record<AgentId, SpeechBubbleSize>>({
     sami: INITIAL_BUBBLE_SIZE,
@@ -793,6 +840,45 @@ export function VRScene() {
     }
   }, [ensureChatSessionId, readAgentMessageStream])
 
+  const transcribeAudio = useCallback(async (audioBlob: Blob) => {
+    const audioBase64 = await blobToBase64(audioBlob)
+    const mimeType = audioBlob.type || 'audio/webm'
+    const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sessionId: ensureChatSessionId(),
+        audioBase64,
+        mimeType,
+        format: getAudioFormatFromMimeType(mimeType),
+        language: 'es'
+      })
+    })
+
+    const payload: TranscriptionResult = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      throw new Error(payload.error || `Transcription request failed (${response.status})`)
+    }
+
+    const text = String(payload.text || '').trim()
+
+    if (!text) {
+      throw new Error('La transcripcion llego vacia')
+    }
+
+    return text
+  }, [ensureChatSessionId])
+
+  const getVoiceFeedbackSpeaker = useCallback((): AgentId => {
+    if (sceneMode === 'rota-panorama') return 'paco'
+    if (activeDialogue.speaker === 'paco') return 'sami'
+
+    return activeDialogue.speaker
+  }, [activeDialogue.speaker, sceneMode])
+
   const askBackendQuestion = useCallback(async (question: string) => {
     const preferredAgent = sceneMode === 'rota-panorama' ? 'paco' : getPreferredAgentForQuestion(question)
     const requestToken = chatRequestTokenRef.current + 1
@@ -843,14 +929,140 @@ export function VRScene() {
     }
   }, [sceneMode, sendAgentMessage])
 
-  const handleDemoQuestion = useCallback(() => {
-    setDemoQuestionIndex((currentIndex) => {
-      const nextQuestion = DEMO_STT_RESPONSES[currentIndex]
-      console.log(`Pregunta STT simulada: ${nextQuestion.question}`)
-      void askBackendQuestion(nextQuestion.question)
-      return (currentIndex + 1) % DEMO_STT_RESPONSES.length
+  const handleVoiceRecordingComplete = useCallback(async (audioBlob: Blob, feedbackSpeaker: AgentId) => {
+    setVoiceStatus('transcribing')
+    setThinkingAgent(feedbackSpeaker)
+    setActiveDialogue({
+      speaker: feedbackSpeaker,
+      text: 'Estoy transcribiendo tu pregunta...',
+      reveal: false
     })
-  }, [askBackendQuestion])
+
+    try {
+      if (audioBlob.size < 512) {
+        throw new Error('La grabacion fue demasiado corta')
+      }
+
+      const transcript = await transcribeAudio(audioBlob)
+
+      console.log(`Transcripción STT: ${transcript}`)
+      setVoiceStatus('idle')
+      await askBackendQuestion(transcript)
+    } catch (error) {
+      console.error(error)
+      setVoiceStatus('idle')
+      setThinkingAgent(null)
+      setActiveDialogue({
+        speaker: feedbackSpeaker,
+        text: 'No pude transcribir bien la pregunta. Prueba otra vez manteniendo pulsado el micro un poco mas.',
+        reveal: false
+      })
+    }
+  }, [askBackendQuestion, transcribeAudio])
+
+  const stopVoiceRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current
+
+    if (!recorder || recorder.state === 'inactive') return
+
+    recorder.stop()
+    mediaRecorderRef.current = null
+  }, [])
+
+  const startVoiceRecording = useCallback(async () => {
+    const feedbackSpeaker = getVoiceFeedbackSpeaker()
+
+    if (voiceStatus !== 'idle' || mediaRecorderRef.current) return
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setActiveDialogue({
+        speaker: feedbackSpeaker,
+        text: 'Este navegador no me da acceso al microfono para STT. Necesito HTTPS y soporte de MediaRecorder.',
+        reveal: false
+      })
+      return
+    }
+
+    try {
+      audioRef.current?.stop()
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      })
+      const mimeType = getSupportedAudioMimeType()
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
+
+      voiceChunksRef.current = []
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = () => {
+        const chunks = voiceChunksRef.current
+        const audioBlob = new Blob(chunks, {
+          type: recorder.mimeType || mimeType || 'audio/webm'
+        })
+
+        voiceChunksRef.current = []
+        stopMediaStream(stream)
+        mediaStreamRef.current = null
+        void handleVoiceRecordingComplete(audioBlob, feedbackSpeaker)
+      }
+
+      recorder.start(250)
+
+      if (!voicePressActiveRef.current) {
+        recorder.stop()
+        mediaRecorderRef.current = null
+        return
+      }
+
+      setVoiceStatus('recording')
+      setThinkingAgent(feedbackSpeaker)
+      setActiveDialogue({
+        speaker: feedbackSpeaker,
+        text: 'Te escucho...',
+        reveal: false
+      })
+    } catch (error) {
+      console.error(error)
+      stopMediaStream(mediaStreamRef.current)
+      mediaStreamRef.current = null
+      mediaRecorderRef.current = null
+      setVoiceStatus('idle')
+      setThinkingAgent(null)
+      setActiveDialogue({
+        speaker: feedbackSpeaker,
+        text: 'No pude abrir el microfono. Revisa permisos del navegador o del visor.',
+        reveal: false
+      })
+    }
+  }, [getVoiceFeedbackSpeaker, handleVoiceRecordingComplete, voiceStatus])
+
+  const handleVoiceRecordStart = useCallback(() => {
+    voicePressActiveRef.current = true
+
+    if (voiceStatus !== 'idle') return
+
+    void startVoiceRecording()
+  }, [startVoiceRecording, voiceStatus])
+
+  const handleVoiceRecordEnd = useCallback(() => {
+    voicePressActiveRef.current = false
+
+    stopVoiceRecording()
+  }, [stopVoiceRecording])
 
   const handleAudioButtonSelect = useCallback(() => {
     const audio = audioRef.current
@@ -901,6 +1113,13 @@ export function VRScene() {
       if (dialogueTimeoutRef.current) {
         window.clearTimeout(dialogueTimeoutRef.current)
       }
+
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.onstop = null
+        mediaRecorderRef.current.stop()
+      }
+
+      stopMediaStream(mediaStreamRef.current)
     }
   }, [])
 
@@ -908,6 +1127,17 @@ export function VRScene() {
   const alfredBubbleVisible = thinkingAgent === 'alfred' || (!thinkingAgent && activeDialogue.speaker === 'alfred')
   const pacoBubbleVisible = thinkingAgent === 'paco' || (!thinkingAgent && activeDialogue.speaker === 'paco')
   const isRotaPanorama = sceneMode === 'rota-panorama'
+  const voiceButtonColor = voiceStatus === 'recording'
+    ? '#ff3b30'
+    : voiceStatus === 'transcribing'
+      ? '#31d5ff'
+      : '#18a957'
+  const voiceButtonEmissive = voiceStatus === 'recording'
+    ? '#ff1f1f'
+    : voiceStatus === 'transcribing'
+      ? '#00bfff'
+      : 'green'
+  const voiceButtonScale = voiceStatus === 'recording' ? 1.35 : 1
 
   return (
     <>
@@ -1041,11 +1271,14 @@ export function VRScene() {
             smoothing={12}
           />
 
-          {/* Esfera verde: simula una pregunta STT hacia el backend */}
-          <Interactive onSelect={handleDemoQuestion}>
-            <mesh position={[0, 0.1, -1]}>
+          {/* Esfera verde: microfono push-to-talk para STT */}
+          <Interactive
+            onSelectStart={handleVoiceRecordStart}
+            onSelectEnd={handleVoiceRecordEnd}
+          >
+            <mesh position={[0, 0.1, -1]} scale={voiceButtonScale}>
               <sphereGeometry args={[0.05]} />
-              <meshStandardMaterial color="green" emissive="green" emissiveIntensity={0.5} />
+              <meshStandardMaterial color={voiceButtonColor} emissive={voiceButtonEmissive} emissiveIntensity={0.8} />
             </mesh>
           </Interactive>
 
