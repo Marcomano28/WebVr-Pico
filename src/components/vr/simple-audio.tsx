@@ -20,6 +20,7 @@ export type AudioControl = {
   getCurrentTrack: () => { id: string; name: string; path: string };
   play: () => void;
   stop: () => void;
+  isPlaying: () => boolean;
 };
 
 // Props para el componente de audio
@@ -35,16 +36,17 @@ export interface SimpleAudioProps {
  * Componente de audio simple que reproduce automáticamente un archivo de audio
  * y permite cambiar entre diferentes pistas.
  */
-const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
+const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(function SimpleAudio({
   initialTrackId = 'track1',
-  volume = 0.4, 
-  autoPlay = true,
+  volume = 0.4,
+  autoPlay = false,
   loop = true,
   onTrackChange = null
-}, ref) => {
+}, ref) {
   // Tipar correctamente la referencia del audio
   const audioRef = useRef<THREE.Audio | null>(null)
-  const { camera, gl } = useThree()
+  const pendingPlayRef = useRef(autoPlay)
+  const { camera } = useThree()
   const [isLoaded, setIsLoaded] = useState(false)
   const [currentTrackId, setCurrentTrackId] = useState(initialTrackId)
   
@@ -56,6 +58,9 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
   // Cambiar a la siguiente pista
   const nextTrack = () => {
     console.log("⭐ nextTrack llamado - Cambiando a siguiente pista");
+    pendingPlayRef.current = true
+    setIsLoaded(false)
+
     if (audioRef.current) {
       if (audioRef.current.isPlaying) {
         audioRef.current.stop()
@@ -82,39 +87,32 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
   
   // Función para intentar reproducir el audio - puede ser llamada por una interacción del usuario
   const playAudio = () => {
+    pendingPlayRef.current = true
+
+    if (!getCurrentTrack().path) {
+      console.log('La pista actual no tiene audio asociado.')
+      pendingPlayRef.current = false
+      return
+    }
+
     if (audioRef.current && isLoaded) {
       try {
         if (!audioRef.current.isPlaying) {
           audioRef.current.play()
           console.log(`Audio reproduciendo: ${getCurrentTrack().path}`)
         }
+        pendingPlayRef.current = false
       } catch (error) {
         console.warn('Error al reproducir audio:', error)
       }
     }
   }
-  
-  // Escuchar eventos del canvas para intentar reproducir después de una interacción
-  useEffect(() => {
-    const domElement = gl.domElement
-    
-    const handleInteraction = () => {
-      playAudio()
-    }
-    
-    domElement.addEventListener('click', handleInteraction)
-    domElement.addEventListener('touchstart', handleInteraction)
-    
-    return () => {
-      domElement.removeEventListener('click', handleInteraction)
-      domElement.removeEventListener('touchstart', handleInteraction)
-    }
-  }, [gl, isLoaded])
-  
+
   // Efecto para cargar y reproducir la pista de audio actual
   useEffect(() => {
     console.log("Cargando pista de audio:", currentTrackId)
-    
+    setIsLoaded(false)
+
     // Detener reproducción anterior si existe
     if (audioRef.current && audioRef.current.isPlaying) {
       audioRef.current.stop()
@@ -122,7 +120,14 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
     
     const track = getCurrentTrack()
     const url = track.path
-    
+
+    if (!url) {
+      audioRef.current = null
+      pendingPlayRef.current = false
+      console.log('Audio desactivado para la pista actual.')
+      return
+    }
+
     // Crear un listener de audio y adjuntarlo a la cámara
     const listener = new THREE.AudioListener()
     camera.add(listener)
@@ -145,30 +150,16 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
         sound.setVolume(volume)
         sound.setLoop(loop)
         setIsLoaded(true)
-        
-        // 1. Intento inmediato de reproducción
-        if (autoPlay) {
-          setTimeout(() => {
-            try {
-              sound.play()
-              console.log(`Audio iniciado automáticamente: ${url}`)
-            } catch (error) {
-              console.warn('Reproducción automática bloqueada, esperando interacción del usuario:', error)
-            }
-          }, 1000)
-        }
-        
-        // 2. Intento adicional después de un tiempo
-        setTimeout(() => {
-          if (!sound.isPlaying) {
-            try {
-              sound.play()
-              console.log("Segundo intento de reproducción exitoso")
-            } catch (error) {
-              console.warn('Segundo intento de reproducción fallido:', error)
-            }
+
+        if (autoPlay || pendingPlayRef.current) {
+          try {
+            sound.play()
+            pendingPlayRef.current = false
+            console.log(`Audio iniciado por solicitud del usuario: ${url}`)
+          } catch (error) {
+            console.warn('Reproducción bloqueada, se necesita otra interacción del usuario:', error)
           }
-        }, 3000)
+        }
       },
       // Callback de progreso
       (xhr) => {
@@ -201,16 +192,16 @@ const SimpleAudio = forwardRef<AudioControl, SimpleAudioProps>(({
     getCurrentTrack,
     play: playAudio,
     stop: () => {
+      pendingPlayRef.current = false
       if (audioRef.current && audioRef.current.isPlaying) {
         audioRef.current.stop()
       }
-    }
+    },
+    isPlaying: () => Boolean(audioRef.current?.isPlaying)
   }));
-  
+
   // Este componente no renderiza nada visible
   return null
 });
 
 export default SimpleAudio;
-
-SimpleAudio.displayName = 'SimpleAudio'; 

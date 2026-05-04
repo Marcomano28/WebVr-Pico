@@ -394,6 +394,41 @@ function placementIsClose(previous: SpeechBubblePlacement | null, next: SpeechBu
     Math.abs(previous.tipY - next.tipY) < 0.5
 }
 
+function DesktopOrbitControls() {
+  const { gl } = useThree()
+  const [enabled, setEnabled] = useState(() => !gl.xr.isPresenting)
+
+  useEffect(() => {
+    const xr = gl.xr as unknown as {
+      isPresenting: boolean
+      addEventListener?: (type: string, listener: () => void) => void
+      removeEventListener?: (type: string, listener: () => void) => void
+    }
+    const handleSessionStart = () => setEnabled(false)
+    const handleSessionEnd = () => setEnabled(true)
+
+    setEnabled(!xr.isPresenting)
+    xr.addEventListener?.('sessionstart', handleSessionStart)
+    xr.addEventListener?.('sessionend', handleSessionEnd)
+
+    return () => {
+      xr.removeEventListener?.('sessionstart', handleSessionStart)
+      xr.removeEventListener?.('sessionend', handleSessionEnd)
+    }
+  }, [gl])
+
+  return (
+    <OrbitControls
+      enabled={enabled}
+      enableZoom={true}
+      enablePan={true}
+      enableRotate={true}
+      enableDamping={true}
+      dampingFactor={0.06}
+    />
+  )
+}
+
 function RotaPanoramaCameraView() {
   const { camera } = useThree()
 
@@ -504,7 +539,6 @@ export function VRScene() {
   const [modelLoaded, setModelLoaded] = useState(false)
   const [activeDialogue, setActiveDialogue] = useState<DialogueLine>(INTRO_DIALOGUE[0])
   const [thinkingAgent, setThinkingAgent] = useState<AgentId | null>(null)
-  const [introDialogueIndex, setIntroDialogueIndex] = useState(0)
   const [demoQuestionIndex, setDemoQuestionIndex] = useState(0)
   const [sceneMode, setSceneMode] = useState<SceneMode>('showroom')
   const [bubbleSizes, setBubbleSizes] = useState<Record<AgentId, SpeechBubbleSize>>({
@@ -519,7 +553,7 @@ export function VRScene() {
   })
   
   // Estado para rastrear información de audio
-  const [currentTrack, setCurrentTrack] = useState({ id: 'track1', name: 'Ambiente' })
+  const [currentTrack, setCurrentTrack] = useState({ id: 'track1', name: 'Ambiente-Jazz' })
   
   // Función para manejar cuando el modelo se carga
   const handleModelLoaded = useCallback(() => {
@@ -759,19 +793,6 @@ export function VRScene() {
     }
   }, [ensureChatSessionId, readAgentMessageStream])
 
-  const showDialogueLine = useCallback((line: DialogueLine) => {
-    if (dialogueTimeoutRef.current) {
-      window.clearTimeout(dialogueTimeoutRef.current)
-    }
-
-    setThinkingAgent(line.speaker)
-    dialogueTimeoutRef.current = window.setTimeout(() => {
-      setActiveDialogue(line)
-      setThinkingAgent(null)
-      dialogueTimeoutRef.current = null
-    }, 650)
-  }, [])
-
   const askBackendQuestion = useCallback(async (question: string) => {
     const preferredAgent = sceneMode === 'rota-panorama' ? 'paco' : getPreferredAgentForQuestion(question)
     const requestToken = chatRequestTokenRef.current + 1
@@ -822,14 +843,6 @@ export function VRScene() {
     }
   }, [sceneMode, sendAgentMessage])
 
-  const handleNextIntroDialogue = useCallback(() => {
-    setIntroDialogueIndex((currentIndex) => {
-      const nextIndex = (currentIndex + 1) % INTRO_DIALOGUE.length
-      showDialogueLine(INTRO_DIALOGUE[nextIndex])
-      return nextIndex
-    })
-  }, [showDialogueLine])
-
   const handleDemoQuestion = useCallback(() => {
     setDemoQuestionIndex((currentIndex) => {
       const nextQuestion = DEMO_STT_RESPONSES[currentIndex]
@@ -838,6 +851,26 @@ export function VRScene() {
       return (currentIndex + 1) % DEMO_STT_RESPONSES.length
     })
   }, [askBackendQuestion])
+
+  const handleAudioButtonSelect = useCallback(() => {
+    const audio = audioRef.current
+
+    if (!audio) {
+      console.log("ERROR: audioRef es null")
+      return
+    }
+
+    const track = audio.getCurrentTrack()
+
+    if (track.path && !audio.isPlaying()) {
+      audio.play()
+      console.log("Audio activado desde la esfera azul")
+      return
+    }
+
+    audio.nextTrack()
+    console.log("INTERACCIÓN DETECTADA: Cambiando pista de audio")
+  }, [])
 
   const handleRotaPortalToggle = useCallback(() => {
     setSceneMode((currentMode) => {
@@ -918,6 +951,7 @@ export function VRScene() {
           <SimpleAudio 
             ref={audioRef} 
             volume={0.4} 
+            autoPlay={false}
             onTrackChange={handleTrackChange} 
           />
           
@@ -1003,25 +1037,20 @@ export function VRScene() {
           <MovementEnhanced
             speed={2}
             rotationSpeed={0.008}
+            deadzone={0.22}
+            smoothing={12}
           />
 
-          {/* Botón reutilizado: avanza la presentación de los agentes */}
-          <Interactive onSelect={handleNextIntroDialogue}>
+          {/* Esfera verde: simula una pregunta STT hacia el backend */}
+          <Interactive onSelect={handleDemoQuestion}>
             <mesh position={[0, 0.1, -1]}>
               <sphereGeometry args={[0.05]} />
               <meshStandardMaterial color="green" emissive="green" emissiveIntensity={0.5} />
             </mesh>
           </Interactive>
 
-          {/* Botón para cambiar música (esfera azul) - MEJORADO */}
-          <Interactive onSelect={() => {
-            if (audioRef.current) {
-              audioRef.current.nextTrack();
-              console.log("INTERACCIÓN DETECTADA: Cambiando pista de audio");
-            } else {
-              console.log("ERROR: audioRef es null");
-            }
-          }}>
+          {/* Esfera azul: activa el audio y despues cambia de pista */}
+          <Interactive onSelect={handleAudioButtonSelect}>
             <mesh position={[0.2, 0.1, -1]}>
               <sphereGeometry args={[0.05]} />
               <meshStandardMaterial color="#0077ff" emissive="#0088ff" emissiveIntensity={1.0} />
@@ -1038,8 +1067,8 @@ export function VRScene() {
           
         </XR>
         
-        {/* OrbitControls para navegadores no-VR */}
-        <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} enableDamping={true} dampingFactor={0.03}/>
+        {/* OrbitControls solo para navegador no-VR */}
+        <DesktopOrbitControls />
       </Canvas>
     </>
   )

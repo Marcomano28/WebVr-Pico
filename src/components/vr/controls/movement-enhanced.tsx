@@ -2,28 +2,59 @@
 
 import { useXR, useController } from '@react-three/xr'
 import { useFrame } from '@react-three/fiber'
-import { Vector3, Quaternion, Euler } from 'three'
+import { MathUtils, Vector3, Quaternion } from 'three'
 import { useRef } from 'react'
 
 interface MovementEnhancedProps {
   speed?: number
   rotationSpeed?: number
+  deadzone?: number
+  smoothing?: number
 }
 
-export default function MovementEnhanced({ 
-  speed = 2, 
-  rotationSpeed = 0.02
+function applyDeadzone(value: number | undefined, deadzone: number) {
+  if (!Number.isFinite(value)) return 0
+
+  const axis = value || 0
+  const magnitude = Math.abs(axis)
+
+  if (magnitude <= deadzone) return 0
+
+  return Math.sign(axis) * ((magnitude - deadzone) / (1 - deadzone))
+}
+
+function pickAxis(axes: readonly number[], primaryIndex: number, fallbackIndex: number, deadzone: number) {
+  const primaryValue = applyDeadzone(axes[primaryIndex], deadzone)
+
+  if (primaryValue !== 0) return primaryValue
+
+  return applyDeadzone(axes[fallbackIndex], deadzone)
+}
+
+export default function MovementEnhanced({
+  speed = 2,
+  rotationSpeed = 0.02,
+  deadzone = 0.18,
+  smoothing = 14
 }: MovementEnhancedProps) {
   const { player } = useXR()
-  const direction = useRef(new Vector3())
-  const stickValue = useRef(0)
-  
+  const lateralAxis = useRef(0)
+  const forwardAxis = useRef(0)
+  const turnAxis = useRef(0)
+  const moveDirection = useRef(new Vector3())
+  const yawQuaternion = useRef(new Quaternion())
+  const upAxis = useRef(new Vector3(0, 1, 0))
+
   // Referencias a los controladores
   const leftController = useController('left')
   const rightController = useController('right')
-  
-  useFrame(() => {
+
+  useFrame((_, delta) => {
     if (!player) return
+
+    let lateralTarget = 0
+    let forwardTarget = 0
+    let turnTarget = 0
 
     // Control con el joystick izquierdo para movimiento lateral
     if (leftController?.inputSource?.gamepad) {
@@ -31,63 +62,46 @@ export default function MovementEnhanced({
       const axes = gamepad.axes
 
       // Compatibilidad: algunas gafas usan índices diferentes para los ejes
-      // Verificamos primero los índices estándar (0) y luego alternativas (2)
-      const horizontalValue = !isNaN(axes[0]) && axes[0] !== 0 ? axes[0] : 
-                           (!isNaN(axes[2]) && axes[2] !== 0 ? axes[2] : 0);
-
-      if (horizontalValue !== 0) {
-        // Crear vector de dirección lateral (izquierda/derecha)
-        const lateralDirection = new Vector3(horizontalValue, 0, 0)
-        
-        // Aplicar la rotación del jugador al vector de movimiento
-        lateralDirection.applyQuaternion(player.quaternion)
-       
-        // Aplicar velocidad y mover
-        lateralDirection.multiplyScalar(speed * 0.02)
-        player.position.add(lateralDirection)
-      }
+      // Verificamos primero los índices estándar y luego alternativas.
+      lateralTarget = pickAxis(axes, 0, 2, deadzone)
     }
-    
+
     // Control con el stick derecho para rotación y movimiento adelante/atrás
     if (rightController?.inputSource?.gamepad) {
       const gamepad = rightController.inputSource.gamepad
       const axes = gamepad.axes
 
       // Compatibilidad: algunas gafas usan índices diferentes para los ejes
-      const horizontalValue = !isNaN(axes[2]) && axes[2] !== 0 ? axes[2] : 
-                           (!isNaN(axes[0]) && axes[0] !== 0 ? axes[0] : 0);
-      
-      const verticalValue = !isNaN(axes[3]) && axes[3] !== 0 ? axes[3] : 
-                         (!isNaN(axes[1]) && axes[1] !== 0 ? axes[1] : 0);
+      turnTarget = pickAxis(axes, 2, 0, deadzone)
+      forwardTarget = pickAxis(axes, 3, 1, deadzone)
+    }
 
-      // Rotación horizontal
-      if (horizontalValue !== 0) {
-        // Suavizar la rotación interpolando el valor actual y el destino
-        stickValue.current = stickValue.current * 0.8 + horizontalValue * 0.3
-        
-        // Crear una rotación en Y basada en el valor del stick suavizado
-        const rotationAngle = stickValue.current * rotationSpeed
-        const rotationY = new Quaternion().setFromEuler(new Euler(0, rotationAngle, 0))
+    lateralAxis.current = MathUtils.damp(lateralAxis.current, lateralTarget, smoothing, delta)
+    forwardAxis.current = MathUtils.damp(forwardAxis.current, forwardTarget, smoothing, delta)
+    turnAxis.current = MathUtils.damp(turnAxis.current, turnTarget, smoothing, delta)
 
-        // Aplicar la rotación al jugador
-        player.quaternion.multiply(rotationY)
-      } else {
-        // Reducir gradualmente el valor cuando no hay entrada
-        stickValue.current *= 0.9
+    if (Math.abs(lateralAxis.current) < 0.001) lateralAxis.current = 0
+    if (Math.abs(forwardAxis.current) < 0.001) forwardAxis.current = 0
+    if (Math.abs(turnAxis.current) < 0.001) turnAxis.current = 0
+
+    if (turnAxis.current !== 0) {
+      const rotationAngle = turnAxis.current * rotationSpeed * 60 * delta
+
+      yawQuaternion.current.setFromAxisAngle(upAxis.current, rotationAngle)
+      player.quaternion.multiply(yawQuaternion.current)
+    }
+
+    if (lateralAxis.current !== 0 || forwardAxis.current !== 0) {
+      moveDirection.current.set(lateralAxis.current, 0, forwardAxis.current)
+
+      if (moveDirection.current.lengthSq() > 1) {
+        moveDirection.current.normalize()
       }
-      
-      // Movimiento adelante/atrás
-      if (verticalValue !== 0) {
-        // Crear vector de dirección adelante/atrás
-        const moveDirection = new Vector3(0, 0, verticalValue)
-        
-        // Aplicar la rotación del jugador al vector de movimiento
-        moveDirection.applyQuaternion(player.quaternion)
-        
-        // Aplicar velocidad y mover
-        moveDirection.multiplyScalar(speed * 0.02)
-        player.position.add(moveDirection)
-      }
+
+      moveDirection.current.applyQuaternion(player.quaternion)
+      moveDirection.current.y = 0
+
+      player.position.addScaledVector(moveDirection.current, speed * delta)
     }
   })
 
