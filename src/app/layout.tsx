@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import ClientLayout from './client-layout'
@@ -9,13 +9,6 @@ export const metadata: Metadata = {
   title: 'WebVR Experience',
   description: 'Experiencia VR interactiva para visores Pico',
   manifest: '/manifest.json',
-  themeColor: '#000000',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
   icons: {
     icon: [
       { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
@@ -25,6 +18,14 @@ export const metadata: Metadata = {
       { url: '/icons/icon-192x192.png' },
     ],
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#000000',
 }
 
 export default function RootLayout({
@@ -47,4 +48,4 @@ export default function RootLayout({
       </body>
     </html>
   )
-} 
+}
