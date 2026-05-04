@@ -276,6 +276,8 @@ interface AgentMessageResult {
 interface TranscriptionResult {
   text?: string
   error?: string
+  message?: string
+  code?: string | null
 }
 
 interface SpeechBubbleAnchorProps {
@@ -346,9 +348,17 @@ function stopMediaStream(stream: MediaStream | null) {
 }
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
+  if (error instanceof Error) return error.message || 'Error sin detalle'
 
   return String(error || 'Error desconocido')
+}
+
+function getPayloadErrorMessage(payload: TranscriptionResult) {
+  const rawError = payload.error || payload.message || payload.code
+
+  if (!rawError) return ''
+
+  return String(rawError)
 }
 
 function formatShortError(message: string) {
@@ -1049,7 +1059,9 @@ export function VRScene() {
     const payload: TranscriptionResult = await response.json().catch(() => ({}))
 
     if (!response.ok) {
-      throw new Error(`STT ${response.status}: ${payload.error || 'Transcription request failed'}`)
+      const detail = getPayloadErrorMessage(payload) || 'Transcription request failed'
+
+      throw new Error(`STT ${response.status}: ${detail}`)
     }
 
     const text = String(payload.text || '').trim()
@@ -1141,13 +1153,14 @@ export function VRScene() {
       await askBackendQuestion(transcript)
     } catch (error) {
       const message = getErrorMessage(error)
+      const visibleMessage = formatShortError(message || 'Error sin detalle. Revisa los logs STT de Railway.')
 
       console.error('[stt] failed', error)
       setVoiceStatus('idle')
       setThinkingAgent(null)
       setActiveDialogue({
         speaker: feedbackSpeaker,
-        text: `STT fallo: ${formatShortError(message)}`,
+        text: `STT fallo: ${visibleMessage}`,
         reveal: false
       })
     }

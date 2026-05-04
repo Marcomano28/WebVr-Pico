@@ -527,6 +527,15 @@ const server = createServer((req, res) => {
   route(req, res).catch((error) => {
     const status = error.status || 500;
 
+    if(req.url?.startsWith('/api/transcribe')){
+      console.error('[stt] route failed', {
+        status,
+        message: error.message || 'Server error',
+        code: error.code || null,
+        payload: error.payload || null
+      });
+    }
+
     if(status >= 500){
       console.error(error);
     }
